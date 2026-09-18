@@ -136,16 +136,38 @@ Privacy filtering applies nearest-neighbor rejection and optional noise injectio
 
 **57 passed, 0 failed** (3 minor warnings: FutureWarnings from pandas/numpy edge cases).
 
-## 15. Exact Run Command
+## 15. Exact Run Commands
+
+### Primary demo: FastAPI + Next.js
+
+```bash
+# Terminal 1
+pip install -r backend/requirements.txt
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 2
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend: `http://localhost:3000`  
+Backend API: `http://localhost:8000/api`
+
+### Legacy/debug Streamlit UI
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-For tests:
+### Tests
+
 ```bash
-pytest tests/ -v
+pytest tests/ backend/tests/ -v
+cd frontend
+npm run lint
+npm run build
 ```
 
 ## 16. Known Limitations
@@ -161,7 +183,7 @@ pytest tests/ -v
 
 ## 17. Demo Walkthrough
 
-1. Launch: `streamlit run app.py`
+1. Launch FastAPI backend and Next.js frontend using the commands above
 2. Data: Load demo dataset (500 patients, 15K longitudinal records)
 3. Train: Select Gaussian Copula + Demo mode, train (~1 second)
 4. Cohort Builder: Select "Older Diabetic Cohort" preset, set 5000 patients
@@ -205,6 +227,19 @@ pytest tests/ -v
 | `backend/requirements.txt` | Backend Python dependencies |
 | `frontend/package.json` | Frontend Node.js dependencies |
 
-## 19. Remaining Manual Steps
+## 19. Remaining Verification Steps
 
-None. The application is fully functional end-to-end. All features work as specified.
+The repository contains the migrated FastAPI + Next.js implementation and automated test coverage, but this report must distinguish source-code inspection from workload execution.
+
+Still requiring execution on the target Windows/16 GB CPU-only environment:
+
+- run `pytest tests/ backend/tests/ -v`
+- run `npm run lint` and `npm run build`
+- run the complete 1000-patient smoke flow
+- run the required 5000 patients x 30 days smoke flow
+- run `python scripts/run_benchmarks.py`
+- copy measured benchmark values into `BENCHMARK_REPORT.md`
+- verify CTGAN Demo mode completes successfully on the target machine
+- verify ZIP export after the 5000 x 30 run
+
+Do not describe those items as verified until the commands have completed successfully.

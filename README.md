@@ -1,8 +1,8 @@
-# ClinSynth
+# ClinSynth — Clinical Research Twin Engine
 
-**Privacy-Preserving Synthetic Patient Data Platform**
+**From scarce patient data to research-ready synthetic cohorts.**
 
-*Realistic Data. Zero Patient Exposure.*
+*Privacy-screened. Clinically validated. Subgroup-faithful.*
 
 ---
 
@@ -18,12 +18,16 @@ A researcher can:
 5. Define a custom cohort with demographic and conditional constraints
 6. Apply research scenario presets (7 built-in clinical scenarios)
 7. Generate synthetic patient profiles with trajectory archetypes
-8. Explore individual patient journeys with cohort comparison
-9. Validate fidelity per-column, per-subgroup, and overall
-10. Run privacy screening with real-to-real baseline context
-11. Explore the privacy-vs-fidelity tradeoff across privacy modes
-12. Save and compare experiments with full reproducibility
-13. Export comprehensive ZIP bundles with quality reports
+8. Run clinical plausibility guardrails with automatic repair
+9. Explore individual patient journeys with cohort comparison
+10. Validate fidelity per-column, per-subgroup, and overall
+11. Run privacy screening with membership-inference detection
+12. Explore the privacy-vs-fidelity tradeoff across privacy modes
+13. Evaluate research utility via TSTR (Train on Synthetic, Test on Real)
+14. Inspect rare-cohort amplification across demographic subgroups
+15. View a unified Research Readiness dashboard (5 independent dimensions)
+16. Save and compare experiments with full reproducibility
+17. Export comprehensive ZIP bundles with quality reports
 
 ## Architecture
 
@@ -43,8 +47,11 @@ Dataset
   -> Longitudinal Guardrails
   -> Statistical Validation Engine (per-column, subgroup, pairwise)
   -> Privacy Evaluation (real-to-real baseline, synth-to-synth)
+  -> Research Utility (TSTR: Train on Synthetic, Test on Real)
+  -> Rare Cohort Amplification Analysis
+  -> Research Readiness Assessment (5 dimensions)
   -> Experiment History (JSON-based)
-  -> Next.js Frontend (12 pages) / FastAPI Backend
+  -> Next.js Frontend (13 pages) / FastAPI Backend
   -> CSV / JSON / ZIP Export with Quality Report
 ```
 
@@ -62,7 +69,10 @@ src/                  # Core ML/data modules (shared by all frontends)
   validation/         # Statistical comparison (KS, Wasserstein, TVD, correlation,
                       #   per-column quality cards, subgroup fidelity)
   privacy/            # Duplicate detection, NN analysis, real-to-real baseline,
-                      #   synth-to-synth distances, privacy mode filtering
+                      #   synth-to-synth distances, privacy mode filtering,
+                      #   membership inference screening
+  research/           # TSTR utility evaluation, source/synthetic subgroup analysis,
+                      #   rare cohort amplification
   visualization/      # Plotly charts (legacy Streamlit)
   utils/              # Configuration, export, experiment history
 backend/              # FastAPI REST API
@@ -71,10 +81,10 @@ backend/              # FastAPI REST API
     schemas/models.py # Pydantic request/response models
     services/state.py # In-memory application state
 frontend/             # Next.js 16 + TypeScript + Tailwind CSS + Recharts
-  app/                # App Router pages (12 routes)
+  app/                # App Router pages (13 routes)
   lib/api.ts          # API client with full TypeScript interfaces
   components/         # Shared UI components (sidebar nav)
-tests/                # pytest test suite (57 core + 27 API tests)
+tests/                # pytest test suite (57 core + 41 API tests)
 app.py                # Legacy Streamlit UI (optional)
 artifacts/            # Model artifacts and reports (gitignored)
 ```
@@ -100,7 +110,19 @@ artifacts/            # Model artifacts and reports (gitignored)
 - **Three Privacy Modes**: Low (no filtering), Balanced (moderate rejection), High (strict rejection + noise)
 - **Real-to-Real Baseline**: Contextualizes synthetic distances against real-record separation
 - **Synth-to-Synth Distances**: Diversity check within synthetic data
+- **Membership Inference Screening**: Distance-based separability test for re-identification risk
 - **Privacy vs Fidelity Explorer**: Compare tradeoffs across all three modes
+
+### Research Utility
+- **TSTR Evaluation**: Train on Synthetic, Test on Real — measures how well models trained on synthetic data generalize to real held-out data
+- **Utility Retention Score**: Ratio of synthetic-trained to real-trained model performance
+- **Multiple Model Types**: Logistic Regression and Random Forest classifiers
+- **Metric Suite**: Accuracy, F1, Precision, Recall, ROC-AUC for both real-trained and synthetic-trained models
+
+### Rare Cohort Amplifier
+- **Source Subgroup Analysis**: Counts and percentages across 7 demographic/condition subgroups
+- **Amplification Factor**: Measures how well synthetic generation preserves or amplifies rare subgroups
+- **Research Readiness Dashboard**: Unified view of 5 independent quality dimensions (Statistical Fidelity, Research Utility, Subgroup Preservation, Clinical Validity, Privacy Screening)
 
 ### Validation
 - **Per-Column Quality Cards**: Individual column quality grades (Excellent/Good/Fair/Poor)
@@ -117,18 +139,26 @@ artifacts/            # Model artifacts and reports (gitignored)
 
 ## Dashboard Pages
 
-1. **Overview** — Pipeline visualization, executive metrics, current experiment summary
+Navigation is grouped into three sections: **Platform**, **Analysis**, and **Research**.
+
+### Platform
+1. **Overview** — Pipeline visualization (8-stage progress), key metrics, constraint summary
 2. **Data** — Load demo dataset or upload CSV, data quality summary
 3. **Train** — Train CTGAN or Gaussian Copula with configurable epochs
 4. **Cohort Builder** — Research presets, demographic constraints, conditional constraints, trajectory distribution, privacy mode, seed
 5. **Synthetic Cohort** — Constraint satisfaction gauges, trajectory distribution, plausibility checks
+
+### Analysis
 6. **Patient Journeys** — Individual patient timeline explorer with cohort average overlay
 7. **Validation** — Fidelity summary, per-column quality cards, distribution comparisons, correlations, longitudinal trends, subgroup fidelity
-8. **Privacy** — Exact duplicates, nearest-neighbor analysis, real-to-real baseline, synth-to-synth distances
+8. **Privacy** — Exact duplicates, nearest-neighbor analysis, real-to-real baseline, synth-to-synth distances, membership inference
 9. **Privacy vs Fidelity** — Compare low/balanced/high privacy modes on fidelity and distance metrics
 10. **Model Comparison** — Train and compare multiple synthesizers on fidelity, privacy, speed, size
-11. **Experiments** — Save, list, and inspect past experiments
-12. **Export** — Individual CSV/JSON downloads, quality report, comprehensive ZIP
+
+### Research
+11. **Research Readiness** — Unified dashboard evaluating 5 independent dimensions: Statistical Fidelity, Research Utility (TSTR), Subgroup Preservation, Clinical Validity, Privacy Screening; plus rare cohort amplification table
+12. **Experiments** — Save, list, and inspect past experiments
+13. **Export** — Individual CSV/JSON downloads, quality report, comprehensive ZIP
 
 ## Tech Stack
 
@@ -198,9 +228,10 @@ Legacy Streamlit app: `http://localhost:8501`
 10. **Patient Journeys**: Select a patient, compare with cohort average
 11. **Validation**: Check fidelity score, per-column quality, subgroup fidelity
 12. **Privacy**: Review nearest-neighbor distances with real-to-real baseline context
-13. **Model Comparison**: (Optional) Compare CTGAN vs Gaussian Copula
-14. **Experiments**: Save experiment for future comparison
-15. **Export**: Download complete ZIP with quality report
+13. **Research Readiness**: Run TSTR evaluation (target: hypertension), review all 5 dimensions and rare cohort amplification
+14. **Model Comparison**: (Optional) Compare CTGAN vs Gaussian Copula
+15. **Experiments**: Save experiment for future comparison
+16. **Export**: Download complete ZIP with quality report
 
 ## Dataset
 
@@ -252,9 +283,22 @@ These are **simulation assumptions** for demonstration purposes, not validated c
 | Near-Copy Flagging | Records below configurable distance threshold |
 | Real-to-Real Baseline | 2nd-nearest-neighbor distances among real records (context) |
 | Synth-to-Synth Distances | NN distances within synthetic data (diversity check) |
+| Membership Inference | Distance-based separability test for re-identification risk |
 | Privacy Mode Filtering | Near-copy rejection + noise injection (low/balanced/high) |
 
 **These are screening metrics, not formal privacy guarantees.** Synthetic data can reduce exposure of original records but is not automatically equivalent to formal differential privacy.
+
+## Research Utility Metrics
+
+| Metric | Description |
+|--------|-------------|
+| TSTR Accuracy | Classification accuracy of models trained on synthetic, tested on real |
+| TSTR F1 Score | Harmonic mean of precision and recall on real held-out test set |
+| TSTR ROC-AUC | Area under the ROC curve for synthetic-trained model |
+| Utility Retention | Ratio of synthetic-trained to real-trained performance (closer to 1.0 = better) |
+| Rare Cohort Amplification | Source vs synthetic subgroup counts with amplification factor |
+
+**TSTR evaluates downstream utility, not statistical fidelity.** A high utility retention score indicates that models trained on synthetic data generalize comparably to models trained on real data for the specified prediction task.
 
 ## Limitations
 
@@ -270,18 +314,14 @@ These are **simulation assumptions** for demonstration purposes, not validated c
 ## Testing
 
 ```bash
-pytest tests/ -v
-```
-
-```bash
 # Core tests (57 tests)
 pytest tests/ -v
 
-# API tests (27 tests)
+# API tests (41 tests)
 pytest backend/tests/ -v
 
 # All tests
 pytest tests/ backend/tests/ -v
 ```
 
-84 tests total covering: data generation, preprocessing, cohort building (including nested constraints), trajectory types, temporal generation, validation (including per-column quality and subgroup fidelity), privacy (including modes, real-to-real baseline, synth-to-synth), guardrails, experiment history, research presets, reproducibility, quality reports, export, and all FastAPI endpoints.
+98 tests total covering: data generation, preprocessing, cohort building (including nested constraints), trajectory types, temporal generation, validation (including per-column quality and subgroup fidelity), privacy (including modes, real-to-real baseline, synth-to-synth, membership inference), guardrails, experiment history, research presets, reproducibility, quality reports, export, source subgroup analysis, rare cohort amplification, TSTR research utility, research readiness, and all FastAPI endpoints.

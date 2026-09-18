@@ -6,7 +6,7 @@
 
 ## 1. What Was Built
 
-ClinSynth: an advanced privacy-aware clinical cohort simulation and validation platform with a production-style FastAPI + Next.js architecture (12 pages) and an optional legacy Streamlit UI. The system loads patient data, trains synthetic data generators, compares models, builds custom cohorts with nested/conditional constraints, generates longitudinal health journeys with trajectory archetypes, validates data statistically at per-column and subgroup levels, screens for privacy leakage with real-to-real baseline context, explores privacy-vs-fidelity tradeoffs, manages experiment history, and exports comprehensive results.
+ClinSynth — Clinical Research Twin Engine: a competition-grade privacy-aware clinical cohort simulation and validation platform with a production-style FastAPI + Next.js architecture (13 pages, unified clinical design system) and an optional legacy Streamlit UI. The system loads patient data, trains synthetic data generators, compares models, builds custom cohorts with nested/conditional constraints, generates longitudinal health journeys with trajectory archetypes, runs clinical plausibility guardrails with automatic repair, validates data statistically at per-column and subgroup levels, screens for privacy leakage with membership-inference detection, evaluates research utility via TSTR (Train on Synthetic, Test on Real), analyzes rare cohort amplification, provides a unified Research Readiness dashboard (5 independent dimensions), explores privacy-vs-fidelity tradeoffs, manages experiment history, and exports comprehensive results.
 
 ## 2. Architecture
 
@@ -19,15 +19,18 @@ Data Ingestion -> Preprocessing -> Plausibility Guardrails
   -> Plausibility Repair -> Temporal Engine (trajectory archetypes)
   -> Longitudinal Guardrails -> Statistical Validation
     (per-column quality cards, subgroup fidelity, pairwise correlations)
-  -> Privacy Screening (real-to-real baseline, synth-to-synth, NN analysis)
-  -> Experiment History (JSON-based) -> FastAPI REST API -> Next.js Frontend (12 pages)
+  -> Privacy Screening (real-to-real baseline, synth-to-synth, NN analysis, membership inference)
+  -> Research Utility (TSTR: Train on Synthetic, Test on Real)
+  -> Rare Cohort Amplification Analysis
+  -> Research Readiness Assessment (5 dimensions)
+  -> Experiment History (JSON-based) -> FastAPI REST API -> Next.js Frontend (13 pages)
   -> Comprehensive CSV/JSON/ZIP Export with Quality Report
 ```
 
-**Primary UI**: Next.js 16 (TypeScript, Tailwind CSS, Recharts) + FastAPI backend
+**Primary UI**: Next.js 16 (TypeScript, Tailwind CSS, Recharts, clinical design system) + FastAPI backend
 **Legacy UI**: Streamlit 12-page dashboard (app.py, optional)
 
-Modular structure under `src/` with 9 core subpackages: data, preprocessing (+ guardrails), synthesis (+ comparison), cohort, temporal, validation, privacy, visualization, utils (+ experiments). Backend under `backend/` (FastAPI routes, Pydantic schemas, state management). Frontend under `frontend/` (Next.js App Router, TypeScript API client).
+Modular structure under `src/` with 10 core subpackages: data, preprocessing (+ guardrails), synthesis (+ comparison), cohort, temporal, validation, privacy (+ membership inference), research (TSTR utility + subgroup analysis), visualization, utils (+ experiments). Backend under `backend/` (FastAPI routes, Pydantic schemas, state management). Frontend under `frontend/` (Next.js App Router, TypeScript API client, clinical design system).
 
 ## 3. Dataset Used
 
@@ -100,8 +103,25 @@ Privacy filtering applies nearest-neighbor rejection and optional noise injectio
 - Near-copy flagging (configurable threshold per privacy mode)
 - **Real-to-real baseline**: 2nd-nearest-neighbor distances among original data
 - **Synth-to-synth distances**: NN distances within synthetic data (diversity check)
+- **Membership inference screening**: Distance-based separability test for re-identification risk
 - Distance distribution visualization
 - Overall screening status (PASSED / REVIEW NEEDED)
+
+## 11a. Research Utility (TSTR) Implementation
+
+- **Train on Synthetic, Test on Real**: Trains models on synthetic data, evaluates on held-out real test set
+- **Utility Retention**: Ratio of synthetic-trained to real-trained performance (closer to 1.0 = better)
+- **Model Types**: Logistic Regression and Random Forest classifiers
+- **Metric Suite**: Accuracy, F1, Precision, Recall, ROC-AUC
+- Proper feature encoding (one-hot for categorical, median imputation for numeric)
+- Target leakage prevention (excludes patient_id)
+- 70/30 real data split for baseline and evaluation
+
+## 11b. Rare Cohort Amplifier
+
+- **Source subgroup analysis**: 7 demographic/condition subgroups (elderly, diabetic, hypertensive, and combinations)
+- **Amplification factor**: Synthetic count / source count per subgroup
+- **Research Readiness dashboard**: 5 independent dimensions evaluated separately — Statistical Fidelity, Research Utility (TSTR), Subgroup Preservation, Clinical Validity, Privacy Screening — with X/5 passing summary and rare cohort coverage table
 
 ## 12. Clinical Plausibility Guardrails
 
@@ -113,7 +133,7 @@ Privacy filtering applies nearest-neighbor rejection and optional noise injectio
 
 ## 13. Tests Run
 
-57 pytest tests across 16 test classes:
+### Core Tests (57 tests across 16 test classes):
 - TestDemoDataGeneration (7 tests)
 - TestPreprocessing (3 tests)
 - TestDatasetDetection (2 tests)
@@ -132,9 +152,27 @@ Privacy filtering applies nearest-neighbor rejection and optional noise injectio
 - TestResearchPresets (3 tests)
 - TestReproducibility (2 tests)
 
+### API Tests (41 tests across 13 test classes):
+- TestHealth (1 test)
+- TestData (4 tests)
+- TestTrain (3 tests)
+- TestCohort (4 tests)
+- TestJourneys (3 tests)
+- TestValidation (1 test)
+- TestPrivacy (2 tests)
+- TestExperiments (2 tests)
+- TestExport (3 tests)
+- TestOverview (2 tests)
+- TestConfig (2 tests)
+- TestSourceSubgroups (2 tests)
+- TestRareAmplification (3 tests)
+- TestResearchUtility (4 tests)
+- TestResearchReadiness (3 tests)
+- TestGuardrails (2 tests)
+
 ## 14. Test Results
 
-**57 passed, 0 failed** (3 minor warnings: FutureWarnings from pandas/numpy edge cases).
+**98 total: 57 core + 41 API — all passed, 0 failed.**
 
 ## 15. Exact Run Commands
 
@@ -157,14 +195,27 @@ Backend API: `http://localhost:8000/api`
 ### Legacy/debug Streamlit UI
 
 ```bash
-pip install -r requirements.txt
-streamlit run app.py
+# Backend
+pip install -r backend/requirements.txt
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Frontend (separate terminal)
+cd frontend && npm install && npm run dev
 ```
 
 ### Tests
 
 ```bash
+# Core tests
+pytest tests/ -v
+
+# API tests
+pytest backend/tests/ -v
+
+# All tests
 pytest tests/ backend/tests/ -v
+
+# Frontend checks
 cd frontend
 npm run lint
 npm run build
@@ -183,8 +234,8 @@ npm run build
 
 ## 17. Demo Walkthrough
 
-1. Launch FastAPI backend and Next.js frontend using the commands above
-2. Data: Load demo dataset (500 patients, 15K longitudinal records)
+1. Launch: Start backend (`uvicorn backend.app.main:app`) + frontend (`cd frontend && npm run dev`)
+2. Data: Click "Load Demo Dataset" (500 patients, 15K longitudinal records)
 3. Train: Select Gaussian Copula + Demo mode, train (~1 second)
 4. Cohort Builder: Select "Older Diabetic Cohort" preset, set 5000 patients
 5. Configure: Adjust HTN-among-diabetic (60%), DM-among-elderly (40%)
@@ -195,9 +246,10 @@ npm run build
 10. Patient Journeys: Select a patient, compare with cohort average
 11. Validation: Check fidelity score, per-column quality cards, subgroup fidelity
 12. Privacy: Review NN distances with real-to-real baseline context
-13. Model Comparison: (Optional) Compare CTGAN vs Gaussian Copula
-14. Experiments: Save experiment for future comparison
-15. Export: Download complete ZIP with quality report
+13. Research Readiness: Run TSTR evaluation (target: hypertension), review all 5 dimensions and rare cohort amplification
+14. Model Comparison: (Optional) Compare CTGAN vs Gaussian Copula
+15. Experiments: Save experiment for future comparison
+16. Export: Download complete ZIP with quality report
 
 ## 18. Important Files
 
@@ -206,7 +258,7 @@ npm run build
 | `backend/app/api/routes.py` | FastAPI REST API endpoints |
 | `backend/app/schemas/models.py` | Pydantic request/response models |
 | `backend/app/services/state.py` | In-memory application state |
-| `frontend/app/` | Next.js 16 pages (12 routes, TypeScript) |
+| `frontend/app/` | Next.js 16 pages (13 routes, TypeScript, clinical design system) |
 | `frontend/lib/api.ts` | TypeScript API client with full interfaces |
 | `app.py` | Legacy Streamlit application (optional) |
 | `src/data/demo_generator.py` | Deterministic demo dataset generator |
@@ -218,16 +270,31 @@ npm run build
 | `src/cohort/builder.py` | Cohort conditioning with nested constraints |
 | `src/temporal/generator.py` | Longitudinal journey generator with trajectory archetypes |
 | `src/validation/engine.py` | Statistical validation (per-column, subgroup, fidelity) |
-| `src/privacy/evaluator.py` | Privacy screening, modes, baselines |
+| `src/privacy/evaluator.py` | Privacy screening, modes, baselines, membership inference |
+| `src/research/utility.py` | TSTR evaluation (Train on Synthetic, Test on Real) |
+| `src/research/subgroups.py` | Source/synthetic subgroup analysis and amplification |
 | `src/utils/config.py` | Centralized configuration (presets, modes, bounds) |
 | `src/utils/export.py` | CSV/JSON/ZIP export with quality reports |
 | `src/utils/experiments.py` | Experiment history management |
 | `tests/test_clinsynth.py` | Core test suite (57 tests) |
-| `backend/tests/test_api.py` | API test suite (27 tests) |
+| `backend/tests/test_api.py` | API test suite (41 tests) |
+| `frontend/app/globals.css` | Clinical design system (CSS custom properties) |
+| `frontend/components/nav.tsx` | Grouped sidebar navigation (Platform/Analysis/Research) |
 | `backend/requirements.txt` | Backend Python dependencies |
 | `frontend/package.json` | Frontend Node.js dependencies |
 
-## 19. Remaining Verification Steps
+## 19. UI Design System
+
+Clinical-grade design system applied across all 13 pages:
+- **Color palette**: `#0F2F2C` (primary dark), `#2F6B5F` (primary), `#4FAE8A` (accent), `#EAF5F1` (mint)
+- **CSS custom properties**: All colors defined as `:root` variables for consistent theming
+- **Component classes**: `.card`, `.btn-primary`, `.btn-secondary`, `.badge`, `.metric-value`, `.section-title`, `.table-container`, `.mint-card`, `.pipeline-step-*`
+- **Badge system**: `.badge` base class + modifier (`.badge-success`, `.badge-warning`, `.badge-danger`, `.badge-info`)
+- **Chart palette**: `#2F6B5F`, `#4FAE8A`, `#D4A843`, `#C45B52`, `#0F2F2C`, `#66756F` applied to all Recharts visualizations
+- **Grouped sidebar**: PLATFORM (Overview, Data, Train, Cohort Builder, Synthetic Cohort), ANALYSIS (Patient Journeys, Validation, Privacy, Privacy vs Fidelity, Model Comparison), RESEARCH (Research Readiness, Experiments, Export)
+- Dark sidebar (`#0F2F2C`) with accent green active states
+
+## 20. Remaining Verification Steps
 
 The repository contains the migrated FastAPI + Next.js implementation and automated test coverage, but this report must distinguish source-code inspection from workload execution.
 

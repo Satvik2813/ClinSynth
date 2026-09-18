@@ -43,6 +43,10 @@ export const api = {
     request<CohortResult>("/cohort/generate", { method: "POST", body: JSON.stringify(body) }),
   getCurrentCohort: () => request<CohortResult>("/cohort/current"),
 
+  getSourceSubgroups: () => request<SourceSubgroups>("/cohort/source-subgroups"),
+  getRareAmplification: () => request<{ amplification: RareAmplification[] }>("/cohort/rare-amplification"),
+  getGuardrails: () => request<GuardrailsResult>("/cohort/guardrails"),
+
   listPatients: () => request<{ patient_ids: string[] }>("/journeys"),
   getJourney: (id: string) => request<JourneyResult>(`/journeys/${id}`),
 
@@ -51,6 +55,10 @@ export const api = {
   getPrivacy: () => request<PrivacyResult>("/privacy"),
   comparePrivacy: () =>
     request<{ results: PrivacyFidelityEntry[] }>("/privacy/compare", { method: "POST" }),
+
+  getResearchUtility: (body: { target: string; model_type?: string; seed?: number }) =>
+    request<UtilityResult>("/research/utility", { method: "POST", body: JSON.stringify(body) }),
+  getResearchReadiness: () => request<ResearchReadiness>("/research/readiness"),
 
   getExperiments: () => request<{ experiments: Experiment[] }>("/experiments"),
   getExperiment: (id: string) => request<Experiment>(`/experiments/${id}`),
@@ -295,4 +303,76 @@ export interface PrivacyMode {
   near_copy_threshold: number;
   noise_scale: number;
   rejection_threshold: number;
+}
+
+export interface SourceSubgroups {
+  total_patients: number;
+  subgroups: { label: string; count: number; percentage: number }[];
+}
+
+export interface RareAmplification {
+  subgroup: string;
+  source_count: number;
+  source_pct: number;
+  synthetic_count: number;
+  synthetic_pct: number;
+  amplification_factor: number | null;
+}
+
+export interface GuardrailsResult {
+  total_records_checked: number;
+  violations_found: number;
+  records_repaired: number;
+  repairs: Record<string, number>;
+  all_passed: boolean;
+  accepted_patients: number;
+  accepted_longitudinal: number;
+}
+
+export interface UtilityMetrics {
+  accuracy: number;
+  f1: number;
+  precision: number;
+  recall: number;
+  roc_auc: number | null;
+}
+
+export interface UtilityResult {
+  target: string;
+  model_type: string;
+  real_train_size: number;
+  real_test_size: number;
+  synthetic_train_size: number;
+  features_used: string[];
+  real_trained_metrics: UtilityMetrics;
+  synthetic_trained_metrics: UtilityMetrics;
+  utility_retention: number | null;
+  methodology: string;
+  disclaimer: string;
+}
+
+export interface ReadinessMetric {
+  value: number | string | null;
+  status: string;
+  detail?: string;
+  [key: string]: unknown;
+}
+
+export interface ResearchReadiness {
+  statistical_fidelity: ReadinessMetric;
+  research_utility: ReadinessMetric & {
+    synthetic_metrics?: UtilityMetrics;
+    real_metrics?: UtilityMetrics;
+    target?: string;
+  };
+  subgroup_preservation: ReadinessMetric & { subgroup_count?: number };
+  clinical_validity: ReadinessMetric & {
+    total_checked?: number;
+    violations_found?: number;
+    repairs?: Record<string, number>;
+  };
+  privacy_screening: ReadinessMetric & {
+    checks?: { check: string; passed: boolean; detail: string }[];
+  };
+  rare_cohort_coverage?: RareAmplification[];
 }

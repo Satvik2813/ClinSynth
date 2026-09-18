@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { api, CohortResult } from "@/lib/api";
 import {
   PieChart,
@@ -12,14 +12,14 @@ import {
 } from "recharts";
 
 const PIE_COLORS = [
-  "#6366f1",
-  "#22c55e",
-  "#f59e0b",
-  "#ef4444",
-  "#06b6d4",
-  "#a855f7",
-  "#ec4899",
-  "#14b8a6",
+  "#2F6B5F",
+  "#4FAE8A",
+  "#D4A843",
+  "#C45B52",
+  "#0F2F2C",
+  "#66756F",
+  "#3A8A6E",
+  "#8CB4A5",
 ];
 
 export default function SyntheticCohortPage() {
@@ -27,7 +27,7 @@ export default function SyntheticCohortPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCohort = useCallback(async () => {
+  const fetchCohort = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -40,11 +40,11 @@ export default function SyntheticCohortPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     fetchCohort();
-  }, [fetchCohort]);
+  }, []);
 
   if (loading) {
     return (
@@ -61,7 +61,7 @@ export default function SyntheticCohortPage() {
             style={{
               width: 40,
               height: 40,
-              border: "3px solid var(--card-border)",
+              border: "3px solid var(--border)",
               borderTopColor: "var(--primary)",
               borderRadius: "50%",
               animation: "spin 0.8s linear infinite",
@@ -306,18 +306,18 @@ export default function SyntheticCohortPage() {
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",
-  padding: "0.5rem 0.75rem",
-  borderBottom: "1px solid var(--card-border)",
+  padding: "0.75rem 1rem",
+  borderBottom: "2px solid var(--border)",
   fontWeight: 600,
-  fontSize: "0.8rem",
+  fontSize: "0.75rem",
   textTransform: "uppercase",
-  letterSpacing: "0.04em",
+  letterSpacing: "0.05em",
   color: "var(--muted)",
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  borderBottom: "1px solid var(--card-border)",
+  padding: "0.75rem 1rem",
+  borderBottom: "1px solid var(--border)",
 };
 
 function formatKey(key: string): string {

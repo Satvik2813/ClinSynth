@@ -17,7 +17,7 @@ import {
   Legend,
 } from "recharts";
 
-const COLORS = ["#6366f1", "#06b6d4", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
+const COLORS = ["#2F6B5F", "#4FAE8A", "#D4A843", "#0F2F2C", "#C45B52", "#66756F"];
 
 export default function PrivacyFidelityPage() {
   const [results, setResults] = useState<PrivacyFidelityEntry[]>([]);
@@ -51,7 +51,7 @@ export default function PrivacyFidelityPage() {
       </div>
 
       {error && (
-        <div className="card" style={{ borderLeft: "4px solid #ef4444", color: "#ef4444" }}>
+        <div className="card" style={{ borderLeft: "4px solid var(--danger)", color: "var(--danger)" }}>
           {error}
         </div>
       )}
@@ -79,7 +79,7 @@ export default function PrivacyFidelityPage() {
                   {results.map((r) => (
                     <tr key={r.mode}>
                       <td>
-                        <span className="badge-info">{r.mode}</span>
+                        <span className="badge badge-info">{r.mode}</span>
                       </td>
                       <td className="metric-value">
                         {r.fidelity_score.toFixed(4)}
@@ -88,12 +88,12 @@ export default function PrivacyFidelityPage() {
                         {r.median_nn_distance.toFixed(4)}
                       </td>
                       <td>
-                        <span className={r.exact_duplicates === 0 ? "badge-success" : "badge-warning"}>
+                        <span className={r.exact_duplicates === 0 ? "badge badge-success" : "badge badge-warning"}>
                           {r.exact_duplicates}
                         </span>
                       </td>
                       <td>
-                        <span className={r.near_copy_count === 0 ? "badge-success" : "badge-warning"}>
+                        <span className={r.near_copy_count === 0 ? "badge badge-success" : "badge badge-warning"}>
                           {r.near_copy_count}
                         </span>
                       </td>
@@ -102,7 +102,7 @@ export default function PrivacyFidelityPage() {
                       </td>
                       <td>{r.records_after_filter}</td>
                       <td>
-                        <span className={r.records_rejected === 0 ? "badge-success" : "badge-warning"}>
+                        <span className={r.records_rejected === 0 ? "badge badge-success" : "badge badge-warning"}>
                           {r.records_rejected}
                         </span>
                       </td>
@@ -149,7 +149,7 @@ export default function PrivacyFidelityPage() {
                     );
                   }}
                 />
-                <Scatter data={results} fill="#6366f1">
+                <Scatter data={results} fill="#2F6B5F">
                   <LabelList dataKey="mode" position="top" />
                   {results.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />

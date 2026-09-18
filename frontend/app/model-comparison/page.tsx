@@ -84,7 +84,7 @@ export default function ModelComparisonPage() {
               style={{
                 padding: "0.5rem",
                 borderRadius: "6px",
-                border: "1px solid #d1d5db",
+                border: "1px solid var(--border)",
                 width: "120px",
               }}
             />
@@ -101,7 +101,7 @@ export default function ModelComparisonPage() {
               style={{
                 padding: "0.5rem",
                 borderRadius: "6px",
-                border: "1px solid #d1d5db",
+                border: "1px solid var(--border)",
                 width: "120px",
               }}
             />
@@ -113,13 +113,13 @@ export default function ModelComparisonPage() {
       </div>
 
       {error && (
-        <div className="card" style={{ borderLeft: "4px solid #ef4444", color: "#ef4444" }}>
+        <div className="card" style={{ borderLeft: "4px solid var(--danger)", color: "var(--danger)" }}>
           {error}
         </div>
       )}
 
       {selectMsg && (
-        <div className="card" style={{ borderLeft: "4px solid #10b981", marginBottom: "1rem" }}>
+        <div className="card" style={{ borderLeft: "4px solid var(--accent)", marginBottom: "1rem" }}>
           {selectMsg}
         </div>
       )}
@@ -168,13 +168,13 @@ export default function ModelComparisonPage() {
               <div className="card" key={name} style={{ position: "relative" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
                   <h3 style={{ margin: 0 }}>{name}</h3>
-                  <span className={m.training_success ? "badge-success" : "badge-warning"}>
+                  <span className={m.training_success ? "badge badge-success" : "badge badge-warning"}>
                     {m.training_success ? "Success" : "Failed"}
                   </span>
                 </div>
 
                 {m.error ? (
-                  <p style={{ color: "#ef4444" }}>{m.error}</p>
+                  <p style={{ color: "var(--danger)" }}>{m.error}</p>
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
                     <div>
@@ -208,7 +208,7 @@ export default function ModelComparisonPage() {
                     <div>
                       <span className="metric-label">Exact Duplicates</span>
                       <div className="metric-value">
-                        <span className={m.exact_duplicates === 0 ? "badge-success" : "badge-warning"}>
+                        <span className={m.exact_duplicates === 0 ? "badge badge-success" : "badge badge-warning"}>
                           {m.exact_duplicates ?? "N/A"}
                         </span>
                       </div>
@@ -216,7 +216,7 @@ export default function ModelComparisonPage() {
                     <div>
                       <span className="metric-label">Near Copies</span>
                       <div className="metric-value">
-                        <span className={m.near_copy_count === 0 ? "badge-success" : "badge-warning"}>
+                        <span className={m.near_copy_count === 0 ? "badge badge-success" : "badge badge-warning"}>
                           {m.near_copy_count ?? "N/A"}
                         </span>
                       </div>
@@ -267,8 +267,8 @@ export default function ModelComparisonPage() {
                     }}
                   />
                   <Legend />
-                  <Bar yAxisId="left" dataKey="fidelity_score" name="Fidelity Score" fill="#6366f1" />
-                  <Bar yAxisId="right" dataKey="train_time" name="Train Time (s)" fill="#f59e0b" />
+                  <Bar yAxisId="left" dataKey="fidelity_score" name="Fidelity Score" fill="#2F6B5F" />
+                  <Bar yAxisId="right" dataKey="train_time" name="Train Time (s)" fill="#D4A843" />
                 </BarChart>
               </ResponsiveContainer>
             </div>

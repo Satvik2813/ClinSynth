@@ -66,7 +66,7 @@ export default function ExportPage() {
         <p className="page-subtitle">Download generated cohort data in various formats</p>
       </div>
 
-      <div className="card" style={{ marginBottom: "1.5rem", borderLeft: "4px solid #3b82f6", padding: "1rem 1.25rem" }}>
+      <div className="card" style={{ marginBottom: "1.5rem", borderLeft: "4px solid var(--primary)", padding: "1rem 1.25rem" }}>
         <p style={{ margin: 0, fontSize: "0.9rem" }}>
           <strong>Note:</strong> Exports require a generated cohort. If you have not yet generated
           a cohort, go to the Cohort page first to create one. Downloads will fail with an error
@@ -80,9 +80,9 @@ export default function ExportPage() {
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
                 <h3 style={{ margin: 0 }}>{opt.label}</h3>
-                <span className="badge-info">{opt.format}</span>
+                <span className="badge badge-info">{opt.format}</span>
               </div>
-              <p style={{ color: "var(--text-secondary, #6b7280)", fontSize: "0.875rem", lineHeight: 1.5, marginBottom: "1rem" }}>
+              <p style={{ color: "var(--muted)", fontSize: "0.875rem", lineHeight: 1.5, marginBottom: "1rem" }}>
                 {opt.description}
               </p>
             </div>

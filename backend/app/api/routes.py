@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from backend.app.schemas.models import (
     HealthResponse, DataSummary, TrainRequest, TrainStatus,
     CohortRequest, CohortSummary, ModelCompareRequest, ErrorResponse,
+    UtilityRequest, UtilityResponse,
 )
 from backend.app.services.state import state
 
@@ -30,6 +31,8 @@ from src.validation.engine import (
 from src.privacy.evaluator import (
     privacy_screening, apply_privacy_mode, nearest_neighbor_analysis, detect_exact_duplicates,
 )
+from src.research.utility import compute_tstr_utility
+from src.research.subgroups import compute_source_subgroups, compute_rare_cohort_amplification
 from src.utils.export import export_csv, export_json, create_export_zip, create_quality_report
 from src.utils.config import RESEARCH_PRESETS, PRIVACY_MODES, DEFAULT_TRAJECTORY_DIST, RANDOM_SEED
 from src.utils.experiments import save_experiment, list_experiments, load_experiment
@@ -486,6 +489,153 @@ def privacy_fidelity_compare():
 
     state.privacy_fidelity_results = pf_results
     return {"results": pf_results}
+
+
+# ── Source Subgroups / Rare Cohort ────────────────────────────────────────
+
+@router.get("/cohort/source-subgroups")
+def get_source_subgroups():
+    if not state.data_loaded:
+        raise HTTPException(404, "No dataset loaded")
+    return compute_source_subgroups(state.profiles_processed)
+
+
+@router.get("/cohort/rare-amplification")
+def get_rare_amplification():
+    if not state.data_loaded:
+        raise HTTPException(404, "No dataset loaded")
+    if not state.cohort_generated:
+        raise HTTPException(404, "No cohort generated")
+    return {
+        "amplification": compute_rare_cohort_amplification(
+            state.profiles_processed, state.synthetic_profiles,
+        )
+    }
+
+
+# ── Research Utility ─────────────────────────────────────────────────────
+
+@router.post("/research/utility")
+def research_utility(req: UtilityRequest):
+    if not state.data_loaded:
+        raise HTTPException(400, "No dataset loaded")
+    if not state.cohort_generated:
+        raise HTTPException(400, "No cohort generated")
+
+    result = compute_tstr_utility(
+        real_profiles=state.profiles_processed,
+        synthetic_profiles=state.synthetic_profiles,
+        target=req.target,
+        model_type=req.model_type,
+        seed=req.seed,
+    )
+
+    if "error" in result:
+        raise HTTPException(400, result["error"])
+
+    state.utility_results = result
+    return result
+
+
+# ── Research Readiness ───────────────────────────────────────────────────
+
+@router.get("/research/readiness")
+def research_readiness():
+    if not state.cohort_generated:
+        raise HTTPException(404, "No cohort generated")
+
+    readiness: dict = {}
+
+    if state.fidelity_summary is not None:
+        readiness["statistical_fidelity"] = {
+            "value": state.fidelity_summary["overall_fidelity"],
+            "status": "evaluated",
+            "detail": state.fidelity_summary.get("interpretation", ""),
+        }
+    else:
+        readiness["statistical_fidelity"] = {"value": None, "status": "not_evaluated"}
+
+    if state.utility_results is not None:
+        readiness["research_utility"] = {
+            "value": state.utility_results.get("utility_retention"),
+            "synthetic_metrics": state.utility_results.get("synthetic_trained_metrics"),
+            "real_metrics": state.utility_results.get("real_trained_metrics"),
+            "target": state.utility_results.get("target"),
+            "status": "evaluated",
+        }
+    else:
+        readiness["research_utility"] = {"value": None, "status": "not_evaluated"}
+
+    if state.subgroup_fidelity is not None and len(state.subgroup_fidelity) > 0:
+        valid_scores = [
+            s["fidelity"] for s in state.subgroup_fidelity
+            if s.get("fidelity") is not None
+        ]
+        mean_subgroup = round(float(np.mean(valid_scores)), 4) if valid_scores else None
+        readiness["subgroup_preservation"] = {
+            "value": mean_subgroup,
+            "subgroup_count": len(valid_scores),
+            "status": "evaluated" if mean_subgroup is not None else "not_evaluated",
+            "detail": "Average statistical fidelity across evaluated demographic and condition subgroups.",
+        }
+    else:
+        readiness["subgroup_preservation"] = {"value": None, "status": "not_evaluated"}
+
+    plaus = state.plausibility_stats
+    if plaus is not None:
+        total = plaus.get("total_checked", 0)
+        violations = plaus.get("violations_found", 0)
+        valid_rate = round((total - violations) / total, 4) if total > 0 else None
+        readiness["clinical_validity"] = {
+            "value": valid_rate,
+            "total_checked": total,
+            "violations_found": violations,
+            "repairs": plaus.get("repairs", {}),
+            "status": "evaluated",
+            "detail": "Proportion of records passing clinical plausibility checks after guardrail repair.",
+        }
+    else:
+        readiness["clinical_validity"] = {"value": None, "status": "not_evaluated"}
+
+    if state.privacy_results is not None:
+        readiness["privacy_screening"] = {
+            "value": state.privacy_results.get("overall_status"),
+            "checks": state.privacy_results.get("checks", []),
+            "status": "evaluated",
+        }
+    else:
+        readiness["privacy_screening"] = {"value": None, "status": "not_evaluated"}
+
+    if state.cohort_generated and state.data_loaded:
+        amp = compute_rare_cohort_amplification(
+            state.profiles_processed, state.synthetic_profiles,
+        )
+        readiness["rare_cohort_coverage"] = amp
+
+    return readiness
+
+
+# ── Guardrails Stats ─────────────────────────────────────────────────────
+
+@router.get("/cohort/guardrails")
+def get_guardrails():
+    if not state.cohort_generated:
+        raise HTTPException(404, "No cohort generated")
+    plaus = state.plausibility_stats
+    if plaus is None:
+        raise HTTPException(404, "Plausibility stats not computed")
+
+    total = plaus.get("total_checked", 0)
+    violations = plaus.get("violations_found", 0)
+    return {
+        "total_records_checked": total,
+        "violations_found": violations,
+        "records_repaired": violations,
+        "repairs": plaus.get("repairs", {}),
+        "all_passed": plaus.get("pass", False),
+        "accepted_patients": len(state.synthetic_profiles) if state.synthetic_profiles is not None else 0,
+        "accepted_longitudinal": len(state.synthetic_longitudinal) if state.synthetic_longitudinal is not None else 0,
+    }
 
 
 # ── Experiments ───────────────────────────────────────────────────────────

@@ -90,7 +90,7 @@ export default function TrainPage() {
   }
 
   return (
-    <div style={{ padding: "2rem", maxWidth: 800, margin: "0 auto" }}>
+    <div>
       <h1 className="page-title">Train Model</h1>
       <p className="page-subtitle">
         Train a synthesizer on loaded patient data
@@ -109,7 +109,7 @@ export default function TrainPage() {
         </h2>
         {trained && trainInfo ? (
           <div>
-            <span className="badge-success" style={{ marginBottom: "1rem", display: "inline-block" }}>
+            <span className="badge badge-success" style={{ marginBottom: "1rem", display: "inline-block" }}>
               Model Trained
             </span>
             <div
@@ -145,7 +145,7 @@ export default function TrainPage() {
             </div>
           </div>
         ) : (
-          <span className="badge-warning">No model trained</span>
+          <span className="badge badge-warning">No model trained</span>
         )}
       </div>
 
@@ -304,7 +304,7 @@ export default function TrainPage() {
           >
             Training Complete
           </h2>
-          <span className="badge-success" style={{ marginBottom: "1rem", display: "inline-block" }}>
+          <span className="badge badge-success" style={{ marginBottom: "1rem", display: "inline-block" }}>
             {trainResult.status}
           </span>
           {trainResult.message && (

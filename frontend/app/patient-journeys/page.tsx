@@ -6,7 +6,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
-const COLORS = ["#0d9488", "#0ea5e9", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+const COLORS = ["#2F6B5F", "#4FAE8A", "#D4A843", "#C45B52", "#0F2F2C", "#66756F"];
 
 export default function PatientJourneysPage() {
   const [patientIds, setPatientIds] = useState<string[]>([]);
@@ -17,34 +17,39 @@ export default function PatientJourneysPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     api.listPatients()
       .then((d) => {
+        if (cancelled) return;
         setPatientIds(d.patient_ids);
         if (d.patient_ids.length > 0) {
           setSelectedId(d.patient_ids[0]);
         }
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!selectedId) return;
+    let cancelled = false;
     setJourneyLoading(true);
     api.getJourney(selectedId)
-      .then(setJourney)
-      .catch((e) => setError(e.message))
-      .finally(() => setJourneyLoading(false));
+      .then((d) => { if (!cancelled) setJourney(d); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setJourneyLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedId]);
 
-  if (loading) return <div className="p-8 text-center text-slate-500">Loading patients...</div>;
-  if (error && patientIds.length === 0) return <div className="p-8 text-center text-red-500">{error}</div>;
+  if (loading) return <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}>Loading patients...</div>;
+  if (error && patientIds.length === 0) return <div style={{ padding: "2rem", textAlign: "center", color: "var(--danger)" }}>{error}</div>;
 
   if (patientIds.length === 0) {
     return (
-      <div className="max-w-4xl space-y-6">
+      <div>
         <h1 className="page-title">Patient Journeys</h1>
-        <div className="card text-center text-slate-500 py-12">
+        <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: "3rem" }}>
           No cohort generated yet. Generate a cohort first to view patient journeys.
         </div>
       </div>
@@ -57,14 +62,14 @@ export default function PatientJourneysPage() {
     : [];
 
   return (
-    <div className="max-w-6xl space-y-6">
-      <div>
+    <div>
+      <div style={{ marginBottom: "1.5rem" }}>
         <h1 className="page-title">Patient Journeys</h1>
         <p className="page-subtitle">Explore individual synthetic patient trajectories over time</p>
       </div>
 
-      <div className="card">
-        <label className="text-sm font-medium text-slate-600 mr-3">Select Patient:</label>
+      <div className="card" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+        <label style={{ fontSize: "0.875rem", fontWeight: 500, color: "var(--foreground)" }}>Select Patient:</label>
         <select
           className="select-field"
           value={selectedId}
@@ -74,55 +79,55 @@ export default function PatientJourneysPage() {
             <option key={id} value={id}>{id}</option>
           ))}
         </select>
-        <span className="ml-3 text-sm text-slate-400">{patientIds.length} patients available</span>
+        <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>{patientIds.length} patients available</span>
       </div>
 
-      {journeyLoading && <div className="text-center text-slate-500 py-8">Loading journey...</div>}
+      {journeyLoading && <div style={{ textAlign: "center", color: "var(--muted)", padding: "2rem" }}>Loading journey...</div>}
 
       {journey && !journeyLoading && (
         <>
           {demo && (
-            <div className="card">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Demographics</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="card" style={{ marginBottom: "1rem" }}>
+              <h2 className="section-title">Demographics</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "1rem" }}>
                 <div>
-                  <div className="text-xs text-slate-400">Patient ID</div>
-                  <div className="font-semibold">{demo.patient_id}</div>
+                  <div className="metric-label">Patient ID</div>
+                  <div style={{ fontWeight: 600 }}>{demo.patient_id}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-400">Age</div>
-                  <div className="font-semibold">{demo.age}</div>
+                  <div className="metric-label">Age</div>
+                  <div style={{ fontWeight: 600 }}>{demo.age}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-400">Gender</div>
-                  <div className="font-semibold">{demo.gender}</div>
+                  <div className="metric-label">Gender</div>
+                  <div style={{ fontWeight: 600 }}>{demo.gender}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-400">BMI</div>
-                  <div className="font-semibold">{typeof demo.bmi === "number" ? demo.bmi.toFixed(1) : demo.bmi}</div>
+                  <div className="metric-label">BMI</div>
+                  <div style={{ fontWeight: 600 }}>{typeof demo.bmi === "number" ? demo.bmi.toFixed(1) : demo.bmi}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-400">Conditions</div>
-                  <div className="flex gap-1 mt-0.5">
+                  <div className="metric-label">Conditions</div>
+                  <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.25rem" }}>
                     {demo.diabetes && <span className="badge badge-warning">Diabetes</span>}
                     {demo.hypertension && <span className="badge badge-danger">HTN</span>}
-                    {!demo.diabetes && !demo.hypertension && <span className="text-sm text-slate-400">None</span>}
+                    {!demo.diabetes && !demo.hypertension && <span style={{ fontSize: "0.875rem", color: "var(--muted)" }}>None</span>}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-400">Trajectory</div>
-                  <div className="font-semibold">{demo.trajectory_type || "—"}</div>
+                  <div className="metric-label">Trajectory</div>
+                  <div style={{ fontWeight: 600 }}>{demo.trajectory_type || "—"}</div>
                 </div>
               </div>
             </div>
           )}
 
           {journey.journey.length > 0 && (
-            <div className="card">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Vitals Over Time</h2>
+            <div className="card" style={{ marginBottom: "1rem" }}>
+              <h2 className="section-title">Vitals Over Time</h2>
               <ResponsiveContainer width="100%" height={350}>
                 <LineChart data={journey.journey}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis
                     dataKey="visit_day"
                     label={{ value: "Visit Day", position: "insideBottom", offset: -5 }}
@@ -148,8 +153,8 @@ export default function PatientJourneysPage() {
           )}
 
           {journey.stats.length > 0 && (
-            <div className="card">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Journey Statistics</h2>
+            <div className="card" style={{ marginBottom: "1rem" }}>
+              <h2 className="section-title">Journey Statistics</h2>
               <div className="table-container">
                 <table>
                   <thead>
@@ -166,12 +171,12 @@ export default function PatientJourneysPage() {
                   <tbody>
                     {journey.stats.map((s) => (
                       <tr key={s.metric}>
-                        <td className="font-medium">{s.metric}</td>
+                        <td style={{ fontWeight: 500 }}>{s.metric}</td>
                         <td>{s.baseline != null ? s.baseline.toFixed(1) : "—"}</td>
                         <td>{s.final != null ? s.final.toFixed(1) : "—"}</td>
                         <td>
                           {s.change != null ? (
-                            <span className={s.change > 0 ? "text-red-500" : s.change < 0 ? "text-green-500" : ""}>
+                            <span style={{ color: s.change > 0 ? "var(--danger)" : s.change < 0 ? "var(--accent)" : "var(--foreground)" }}>
                               {s.change > 0 ? "+" : ""}{s.change.toFixed(1)}
                             </span>
                           ) : "—"}
@@ -189,7 +194,7 @@ export default function PatientJourneysPage() {
 
           {journey.cohort_average && journey.cohort_average.length > 0 && (
             <div className="card">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Cohort Average Comparison</h2>
+              <h2 className="section-title">Cohort Average Comparison</h2>
               <div className="table-container">
                 <table>
                   <thead>

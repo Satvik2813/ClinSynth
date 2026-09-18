@@ -272,3 +272,147 @@ class TestConfig:
         assert "low" in modes
         assert "balanced" in modes
         assert "high" in modes
+
+
+class TestSourceSubgroups:
+    def test_no_data(self):
+        r = client.get("/api/cohort/source-subgroups")
+        assert r.status_code == 404
+
+    def test_subgroups_after_demo(self):
+        client.post("/api/data/demo")
+        r = client.get("/api/cohort/source-subgroups")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total_patients"] > 0
+        assert len(data["subgroups"]) == 7
+        for sg in data["subgroups"]:
+            assert "label" in sg
+            assert "count" in sg
+            assert "percentage" in sg
+            assert sg["count"] >= 0
+
+
+class TestRareAmplification:
+    def _setup_cohort(self):
+        client.post("/api/data/demo")
+        client.post("/api/train", json={"synth_type": "GaussianCopulaSynthesizer"})
+        client.post("/api/cohort/generate", json={
+            "num_patients": 50, "timeline_days": 5, "privacy_mode": "low",
+        })
+
+    def test_no_data(self):
+        r = client.get("/api/cohort/rare-amplification")
+        assert r.status_code == 404
+
+    def test_no_cohort(self):
+        client.post("/api/data/demo")
+        r = client.get("/api/cohort/rare-amplification")
+        assert r.status_code == 404
+
+    def test_amplification(self):
+        self._setup_cohort()
+        r = client.get("/api/cohort/rare-amplification")
+        assert r.status_code == 200
+        data = r.json()
+        assert "amplification" in data
+        assert len(data["amplification"]) == 7
+        for entry in data["amplification"]:
+            assert "subgroup" in entry
+            assert "source_count" in entry
+            assert "synthetic_count" in entry
+            assert "amplification_factor" in entry
+
+
+class TestResearchUtility:
+    def _setup_cohort(self):
+        client.post("/api/data/demo")
+        client.post("/api/train", json={"synth_type": "GaussianCopulaSynthesizer"})
+        client.post("/api/cohort/generate", json={
+            "num_patients": 100, "timeline_days": 5, "privacy_mode": "low",
+        })
+
+    def test_no_data(self):
+        r = client.post("/api/research/utility", json={"target": "hypertension"})
+        assert r.status_code == 400
+
+    def test_no_cohort(self):
+        client.post("/api/data/demo")
+        r = client.post("/api/research/utility", json={"target": "hypertension"})
+        assert r.status_code == 400
+
+    def test_utility_default_target(self):
+        self._setup_cohort()
+        r = client.post("/api/research/utility", json={"target": "hypertension"})
+        assert r.status_code == 200
+        data = r.json()
+        assert "utility_retention" in data
+        assert "real_trained_metrics" in data
+        assert "synthetic_trained_metrics" in data
+        assert data["target"] == "hypertension"
+        assert 0 <= data["utility_retention"] <= 2.0
+
+    def test_utility_invalid_target(self):
+        self._setup_cohort()
+        r = client.post("/api/research/utility", json={"target": "nonexistent_column"})
+        assert r.status_code == 400
+
+
+class TestResearchReadiness:
+    def _setup_cohort(self):
+        client.post("/api/data/demo")
+        client.post("/api/train", json={"synth_type": "GaussianCopulaSynthesizer"})
+        client.post("/api/cohort/generate", json={
+            "num_patients": 100, "timeline_days": 5, "privacy_mode": "low",
+        })
+
+    def test_no_cohort(self):
+        r = client.get("/api/research/readiness")
+        assert r.status_code == 404
+
+    def test_readiness_after_cohort(self):
+        self._setup_cohort()
+        r = client.get("/api/research/readiness")
+        assert r.status_code == 200
+        data = r.json()
+        for key in ["statistical_fidelity", "research_utility", "subgroup_preservation",
+                     "clinical_validity", "privacy_screening"]:
+            assert key in data
+            assert "status" in data[key]
+        assert "rare_cohort_coverage" in data
+
+    def test_readiness_with_validation(self):
+        self._setup_cohort()
+        client.get("/api/validation")
+        client.get("/api/privacy")
+        r = client.get("/api/research/readiness")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["statistical_fidelity"]["status"] == "evaluated"
+        assert data["statistical_fidelity"]["value"] is not None
+        assert data["privacy_screening"]["status"] == "evaluated"
+
+
+class TestGuardrails:
+    def _setup_cohort(self):
+        client.post("/api/data/demo")
+        client.post("/api/train", json={"synth_type": "GaussianCopulaSynthesizer"})
+        client.post("/api/cohort/generate", json={
+            "num_patients": 50, "timeline_days": 5, "privacy_mode": "low",
+        })
+
+    def test_no_cohort(self):
+        r = client.get("/api/cohort/guardrails")
+        assert r.status_code == 404
+
+    def test_guardrails_after_cohort(self):
+        self._setup_cohort()
+        r = client.get("/api/cohort/guardrails")
+        assert r.status_code == 200
+        data = r.json()
+        assert "total_records_checked" in data
+        assert "violations_found" in data
+        assert "records_repaired" in data
+        assert "all_passed" in data
+        assert "accepted_patients" in data
+        assert data["accepted_patients"] > 0

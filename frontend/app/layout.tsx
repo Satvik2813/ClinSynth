@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ClinSynth — Synthetic Patient Data Platform",
-  description: "Privacy-preserving synthetic patient data generation for clinical research",
+  title: "ClinSynth — Clinical Research Twin Engine",
+  description: "From scarce patient data to research-ready synthetic cohorts. Privacy-screened, clinically validated, subgroup-faithful.",
 };
 
 export default function RootLayout({

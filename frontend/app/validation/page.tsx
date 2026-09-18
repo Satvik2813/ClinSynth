@@ -30,7 +30,7 @@ export default function ValidationPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
+      <div style={{ textAlign: "center", padding: "2rem", color: "var(--muted)" }}>
         <p>Loading validation results...</p>
       </div>
     );
@@ -38,10 +38,10 @@ export default function ValidationPage() {
 
   if (error || !data) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
+      <div>
         <h1 className="page-title">Validation</h1>
-        <div className="card" style={{ maxWidth: 480, margin: "2rem auto", padding: "2rem" }}>
-          <p style={{ color: "var(--color-danger, #dc3545)" }}>
+        <div className="card" style={{ maxWidth: 480, margin: "2rem auto", padding: "2rem", textAlign: "center" }}>
+          <p style={{ color: "var(--danger)" }}>
             {error || "Validation data not available. Generate a cohort and run validation first."}
           </p>
         </div>
@@ -55,14 +55,14 @@ export default function ValidationPage() {
     switch (q.toLowerCase()) {
       case "excellent":
       case "good":
-        return "badge-success";
+        return "badge badge-success";
       case "fair":
       case "moderate":
-        return "badge-warning";
+        return "badge badge-warning";
       case "poor":
-        return "badge-danger";
+        return "badge badge-danger";
       default:
-        return "badge-info";
+        return "badge badge-info";
     }
   };
 
@@ -83,21 +83,21 @@ export default function ValidationPage() {
   const barColor = (quality: string) => {
     switch (quality.toLowerCase()) {
       case "excellent":
-        return "#22c55e";
+        return "#4FAE8A";
       case "good":
-        return "#16a34a";
+        return "#2F6B5F";
       case "fair":
       case "moderate":
-        return "#eab308";
+        return "#D4A843";
       case "poor":
-        return "#ef4444";
+        return "#C45B52";
       default:
-        return "#6b7280";
+        return "#66756F";
     }
   };
 
   return (
-    <div style={{ padding: "2rem" }}>
+    <div>
       <h1 className="page-title">Validation Report</h1>
       <p className="page-subtitle">
         Statistical fidelity analysis of synthetic data against the original dataset
@@ -225,9 +225,9 @@ export default function ValidationPage() {
                     </td>
                     <td style={{ padding: "0.5rem" }}>
                       {sg.warning ? (
-                        <span className="badge-warning">{sg.warning}</span>
+                        <span className="badge badge-warning">{sg.warning}</span>
                       ) : (
-                        <span className="badge-success">OK</span>
+                        <span className="badge badge-success">OK</span>
                       )}
                     </td>
                   </tr>

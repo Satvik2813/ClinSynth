@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { api, DataSummary } from "@/lib/api";
 
 export default function DataPage() {
@@ -13,7 +13,7 @@ export default function DataPage() {
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchSummary = useCallback(async () => {
+  const fetchSummary = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -30,11 +30,11 @@ export default function DataPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     fetchSummary();
-  }, [fetchSummary]);
+  }, []);
 
   const handleLoadDemo = async () => {
     try {
@@ -85,7 +85,7 @@ export default function DataPage() {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ width: 40, height: 40, border: "3px solid var(--card-border)", borderTopColor: "var(--primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 1rem" }} />
+          <div style={{ width: 40, height: 40, border: "3px solid var(--border)", borderTopColor: "var(--primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 1rem" }} />
           <p style={{ color: "var(--muted)", fontSize: "0.875rem" }}>Loading data summary...</p>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
@@ -109,7 +109,7 @@ export default function DataPage() {
         <div style={{ marginTop: "1.5rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem" }}>
           {/* Demo Card */}
           <div className="card" style={{ textAlign: "center", padding: "2.5rem 1.5rem" }}>
-            <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>&#x1f4ca;</div>
+            <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--primary)", marginBottom: "1rem" }}>DEMO</div>
             <h3 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.5rem" }}>Demo Dataset</h3>
             <p style={{ color: "var(--muted)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
               Load a sample synthetic patient dataset to explore ClinSynth features.
@@ -126,14 +126,14 @@ export default function DataPage() {
               textAlign: "center",
               padding: "2.5rem 1.5rem",
               border: dragging ? "2px dashed var(--primary)" : undefined,
-              background: dragging ? "var(--primary-light)" : undefined,
+              background: dragging ? "var(--mint)" : undefined,
               transition: "border 0.15s, background 0.15s",
             }}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
           >
-            <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>&#x1f4c1;</div>
+            <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--primary)", marginBottom: "1rem" }}>CSV</div>
             <h3 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.5rem" }}>Upload CSV</h3>
             <p style={{ color: "var(--muted)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
               Drag and drop a CSV file here, or click to browse.

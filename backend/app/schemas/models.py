@@ -73,6 +73,26 @@ class ExperimentSaveRequest(BaseModel):
     pass
 
 
+class UtilityRequest(BaseModel):
+    target: str = "hypertension"
+    model_type: str = "logistic_regression"
+    seed: int = 42
+
+
+class UtilityResponse(BaseModel):
+    target: str
+    model_type: str
+    real_train_size: int
+    real_test_size: int
+    synthetic_train_size: int
+    features_used: list[str]
+    real_trained_metrics: dict
+    synthetic_trained_metrics: dict
+    utility_retention: float | None
+    methodology: str
+    disclaimer: str
+
+
 class ErrorResponse(BaseModel):
     detail: str
     error_type: str = "error"

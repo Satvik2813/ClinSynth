@@ -258,6 +258,95 @@ def apply_privacy_mode(
     return result, stats
 
 
+def membership_inference_screening(
+    original: pd.DataFrame,
+    synthetic: pd.DataFrame,
+    holdout_fraction: float = 0.3,
+    sample_size: int = 200,
+    seed: int = 42,
+) -> dict:
+    """Lightweight membership inference attack based on distance separability.
+
+    Splits the real data into member (training) and non-member (holdout) sets.
+    Measures nearest-neighbor distances from each to the synthetic cohort.
+    Uses distance as an attack score and computes ROC-AUC.
+
+    An AUC near 0.5 means the attack cannot distinguish members from
+    non-members — poor attack separability. Higher values indicate
+    potential membership signal.
+    """
+    if len(original) < 20:
+        return {"error": "Too few original records for membership inference screening"}
+
+    rng = np.random.default_rng(seed)
+    n = len(original)
+    n_holdout = max(5, int(n * holdout_fraction))
+    n_member = n - n_holdout
+
+    indices = rng.permutation(n)
+    member_idx = indices[:n_member]
+    nonmember_idx = indices[n_member:]
+
+    member_df = original.iloc[member_idx]
+    nonmember_df = original.iloc[nonmember_idx]
+
+    orig_scaled, synth_scaled, compare_cols = _prepare_scaled_data(original, synthetic)
+    if orig_scaled is None:
+        return {"error": "Could not prepare data for membership inference"}
+
+    member_scaled = orig_scaled[member_idx]
+    nonmember_scaled = orig_scaled[nonmember_idx]
+
+    actual_member_sample = min(sample_size, len(member_scaled))
+    actual_nonmember_sample = min(sample_size, len(nonmember_scaled))
+
+    if actual_member_sample < 5 or actual_nonmember_sample < 5:
+        return {"error": "Too few samples for reliable membership inference screening"}
+
+    if len(member_scaled) > actual_member_sample:
+        m_idx = rng.choice(len(member_scaled), size=actual_member_sample, replace=False)
+        member_sample = member_scaled[m_idx]
+    else:
+        member_sample = member_scaled
+
+    if len(nonmember_scaled) > actual_nonmember_sample:
+        nm_idx = rng.choice(len(nonmember_scaled), size=actual_nonmember_sample, replace=False)
+        nonmember_sample = nonmember_scaled[nm_idx]
+    else:
+        nonmember_sample = nonmember_scaled
+
+    member_dists = _compute_nn_distances(member_sample, synth_scaled, len(member_sample), rng)
+    nonmember_dists = _compute_nn_distances(nonmember_sample, synth_scaled, len(nonmember_sample), rng)
+
+    labels = np.concatenate([
+        np.ones(len(member_dists)),
+        np.zeros(len(nonmember_dists)),
+    ])
+    scores = np.concatenate([-member_dists, -nonmember_dists])
+
+    try:
+        from sklearn.metrics import roc_auc_score
+        auc = round(float(roc_auc_score(labels, scores)), 4)
+    except (ValueError, ImportError):
+        auc = None
+
+    return {
+        "membership_inference_auc": auc,
+        "member_sample_size": len(member_dists),
+        "nonmember_sample_size": len(nonmember_dists),
+        "member_mean_distance": round(float(member_dists.mean()), 6),
+        "nonmember_mean_distance": round(float(nonmember_dists.mean()), 6),
+        "interpretation": (
+            "AUC near 0.5 indicates poor attack separability (good privacy). "
+            "Higher AUC indicates potential membership signal."
+        ),
+        "disclaimer": (
+            "This is a lightweight distance-based screening, not a formal "
+            "membership inference resistance guarantee."
+        ),
+    }
+
+
 def privacy_screening(
     original: pd.DataFrame,
     synthetic: pd.DataFrame,
@@ -273,6 +362,7 @@ def privacy_screening(
     )
     rr_result = real_to_real_baseline(original)
     ss_result = synth_to_synth_distances(synthetic)
+    mi_result = membership_inference_screening(original, synthetic)
 
     checks = []
 
@@ -303,6 +393,16 @@ def privacy_screening(
                   f"(expected > 0.5 for good privacy)",
     })
 
+    mi_auc = mi_result.get("membership_inference_auc")
+    if mi_auc is not None:
+        mi_pass = mi_auc < 0.6
+        checks.append({
+            "check": "Membership Inference Screening",
+            "passed": mi_pass,
+            "detail": f"Membership inference screening AUC: {mi_auc:.4f} "
+                      f"(AUC near 0.5 = poor attack separability = good privacy)",
+        })
+
     all_passed = all(c["passed"] for c in checks)
 
     return {
@@ -312,6 +412,7 @@ def privacy_screening(
         "nearest_neighbor": nn_result,
         "real_to_real_baseline": rr_result,
         "synth_to_synth": ss_result,
+        "membership_inference": mi_result,
         "disclaimer": (
             "These metrics provide privacy screening, not formal privacy guarantees. "
             "Synthetic data generated via statistical models can reduce exposure of "

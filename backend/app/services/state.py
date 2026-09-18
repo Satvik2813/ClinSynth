@@ -36,6 +36,8 @@ class AppState:
     privacy_results: dict | None = None
     privacy_fidelity_results: list | None = None
 
+    utility_results: dict | None = None
+
     model_comparison_results: dict | None = None
 
     current_seed: int = 42
@@ -65,6 +67,7 @@ class AppState:
         self.subgroup_fidelity = None
         self.privacy_results = None
         self.privacy_fidelity_results = None
+        self.utility_results = None
 
 
 state = AppState()

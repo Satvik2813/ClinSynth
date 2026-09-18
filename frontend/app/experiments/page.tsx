@@ -59,8 +59,8 @@ export default function ExperimentsPage() {
       </div>
 
       {error && (
-        <div className="card" style={{ borderLeft: "4px solid #ef4444", marginBottom: "1rem" }}>
-          <p style={{ color: "#ef4444", margin: 0 }}>{error}</p>
+        <div className="card" style={{ borderLeft: "4px solid var(--danger)", marginBottom: "1rem" }}>
+          <p style={{ color: "var(--danger)", margin: 0 }}>{error}</p>
         </div>
       )}
 
@@ -77,15 +77,15 @@ export default function ExperimentsPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={{ textAlign: "left", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>ID</th>
-                <th style={{ textAlign: "left", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>Timestamp</th>
-                <th style={{ textAlign: "left", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>Model</th>
-                <th style={{ textAlign: "right", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>Patients</th>
-                <th style={{ textAlign: "right", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>Days</th>
-                <th style={{ textAlign: "left", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>Privacy</th>
-                <th style={{ textAlign: "right", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>Seed</th>
-                <th style={{ textAlign: "right", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>Fidelity</th>
-                <th style={{ textAlign: "left", padding: "0.75rem", borderBottom: "2px solid var(--border-color, #e5e7eb)" }}>Privacy Status</th>
+                <th>ID</th>
+                <th>Timestamp</th>
+                <th>Model</th>
+                <th>Patients</th>
+                <th>Days</th>
+                <th>Privacy</th>
+                <th>Seed</th>
+                <th>Fidelity</th>
+                <th>Privacy Status</th>
               </tr>
             </thead>
             <tbody>
@@ -94,52 +94,46 @@ export default function ExperimentsPage() {
                   <tr
                     key={exp.experiment_id}
                     onClick={() => toggleExpand(exp.experiment_id)}
-                    style={{ cursor: "pointer", borderBottom: "1px solid var(--border-color, #e5e7eb)" }}
+                    style={{ cursor: "pointer" }}
                   >
-                    <td style={{ padding: "0.75rem", fontFamily: "monospace", fontSize: "0.85rem" }}>
+                    <td style={{ fontFamily: "var(--font-geist-mono, monospace)", fontSize: "0.8125rem" }}>
                       {exp.experiment_id.slice(0, 8)}...
                     </td>
-                    <td style={{ padding: "0.75rem" }}>
-                      {new Date(exp.timestamp).toLocaleString()}
+                    <td>{new Date(exp.timestamp).toLocaleString()}</td>
+                    <td>
+                      <span className="badge badge-info">{exp.model}</span>
                     </td>
-                    <td style={{ padding: "0.75rem" }}>
-                      <span className="badge-info">{exp.model}</span>
+                    <td style={{ textAlign: "right" }}>{exp.num_patients}</td>
+                    <td style={{ textAlign: "right" }}>{exp.timeline_days}</td>
+                    <td>
+                      <span className="badge badge-warning">{exp.privacy_mode}</span>
                     </td>
-                    <td style={{ padding: "0.75rem", textAlign: "right" }}>
-                      <span className="metric-value">{exp.num_patients}</span>
-                    </td>
-                    <td style={{ padding: "0.75rem", textAlign: "right" }}>
-                      <span className="metric-value">{exp.timeline_days}</span>
-                    </td>
-                    <td style={{ padding: "0.75rem" }}>
-                      <span className="badge-warning">{exp.privacy_mode}</span>
-                    </td>
-                    <td style={{ padding: "0.75rem", textAlign: "right", fontFamily: "monospace" }}>
+                    <td style={{ textAlign: "right", fontFamily: "var(--font-geist-mono, monospace)" }}>
                       {exp.seed}
                     </td>
-                    <td style={{ padding: "0.75rem", textAlign: "right" }}>
+                    <td style={{ textAlign: "right" }}>
                       {exp.fidelity_summary ? (
-                        <span className="metric-value">
+                        <span style={{ fontWeight: 600 }}>
                           {(exp.fidelity_summary.overall_fidelity * 100).toFixed(1)}%
                         </span>
                       ) : (
-                        <span style={{ color: "#9ca3af" }}>--</span>
+                        <span style={{ color: "var(--muted)" }}>--</span>
                       )}
                     </td>
-                    <td style={{ padding: "0.75rem" }}>
+                    <td>
                       {exp.privacy_summary ? (
-                        <span className={exp.privacy_summary.status === "PASS" ? "badge-success" : "badge-warning"}>
+                        <span className={exp.privacy_summary.status === "PASS" ? "badge badge-success" : "badge badge-warning"}>
                           {exp.privacy_summary.status}
                         </span>
                       ) : (
-                        <span style={{ color: "#9ca3af" }}>--</span>
+                        <span style={{ color: "var(--muted)" }}>--</span>
                       )}
                     </td>
                   </tr>
 
                   {expandedId === exp.experiment_id && (
                     <tr key={`${exp.experiment_id}-details`}>
-                      <td colSpan={9} style={{ padding: "1rem 1.5rem", backgroundColor: "var(--bg-secondary, #f9fafb)" }}>
+                      <td colSpan={9} style={{ padding: "1rem 1.5rem", backgroundColor: "var(--mint)" }}>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
                           <div>
                             <h4 style={{ marginTop: 0, marginBottom: "0.5rem" }}>Constraints</h4>
@@ -148,7 +142,7 @@ export default function ExperimentsPage() {
                                 {JSON.stringify(exp.constraints, null, 2)}
                               </pre>
                             ) : (
-                              <p style={{ color: "#9ca3af", margin: 0 }}>No constraints recorded</p>
+                              <p style={{ color: "var(--muted)", margin: 0 }}>No constraints recorded</p>
                             )}
                           </div>
                           <div>
@@ -163,7 +157,7 @@ export default function ExperimentsPage() {
                                 ))}
                               </ul>
                             ) : (
-                              <p style={{ color: "#9ca3af", margin: 0 }}>No distribution recorded</p>
+                              <p style={{ color: "var(--muted)", margin: 0 }}>No distribution recorded</p>
                             )}
                           </div>
                           {exp.privacy_summary && (

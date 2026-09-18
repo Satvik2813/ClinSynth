@@ -133,7 +133,7 @@ export default function CohortBuilderPage() {
   }
 
   return (
-    <div style={{ padding: "2rem", maxWidth: 900, margin: "0 auto" }}>
+    <div>
       <h1 className="page-title">Cohort Builder</h1>
       <p className="page-subtitle">
         Configure and generate a synthetic patient cohort
@@ -667,14 +667,17 @@ function NullableSlider({
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",
-  padding: "0.5rem 0.75rem",
-  borderBottom: "2px solid var(--muted)",
-  fontSize: "0.85rem",
+  padding: "0.75rem 1rem",
+  borderBottom: "2px solid var(--border)",
+  fontSize: "0.75rem",
   fontWeight: 600,
+  color: "var(--muted)",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: "0.5rem 0.75rem",
-  borderBottom: "1px solid var(--muted)",
-  fontSize: "0.9rem",
+  padding: "0.75rem 1rem",
+  borderBottom: "1px solid var(--border)",
+  fontSize: "0.875rem",
 };

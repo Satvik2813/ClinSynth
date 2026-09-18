@@ -94,6 +94,7 @@ def nearest_neighbor_analysis(
     synthetic: pd.DataFrame,
     sample_size: int = 500,
     seed: int = 42,
+    near_copy_threshold: float = 0.1,
 ) -> dict:
     orig_scaled, synth_scaled, compare_cols = _prepare_scaled_data(original, synthetic)
     if orig_scaled is None:
@@ -113,8 +114,8 @@ def nearest_neighbor_analysis(
         "q25_distance": round(float(np.percentile(distances, 25)), 6),
         "q75_distance": round(float(np.percentile(distances, 75)), 6),
         "q95_distance": round(float(np.percentile(distances, 95)), 6),
-        "near_copy_count": int((distances < 0.1).sum()),
-        "near_copy_threshold": 0.1,
+        "near_copy_count": int((distances < near_copy_threshold).sum()),
+        "near_copy_threshold": near_copy_threshold,
         "distances": distances.tolist(),
     }
 
@@ -265,7 +266,11 @@ def privacy_screening(
     max_near_copy_rate: float = 0.01,
 ) -> dict:
     dup_result = detect_exact_duplicates(original, synthetic)
-    nn_result = nearest_neighbor_analysis(original, synthetic)
+    nn_result = nearest_neighbor_analysis(
+        original,
+        synthetic,
+        near_copy_threshold=near_copy_threshold,
+    )
     rr_result = real_to_real_baseline(original)
     ss_result = synth_to_synth_distances(synthetic)
 

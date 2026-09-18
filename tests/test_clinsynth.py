@@ -20,9 +20,15 @@ from src.validation.engine import (
     categorical_comparison, correlation_comparison, validate_profiles,
     validate_longitudinal, compute_fidelity_summary,
 )
-from src.privacy.evaluator import detect_exact_duplicates, nearest_neighbor_analysis, privacy_screening
-from src.utils.export import export_csv, export_json, create_export_zip
-from src.utils.config import BOUNDS
+from src.privacy.evaluator import (
+    detect_exact_duplicates, nearest_neighbor_analysis, privacy_screening,
+    apply_privacy_mode, real_to_real_baseline, synth_to_synth_distances,
+)
+from src.preprocessing.guardrails import check_plausibility, repair_profiles, repair_longitudinal
+from src.synthesis.comparison import compare_models, format_comparison_table
+from src.utils.export import export_csv, export_json, create_export_zip, create_quality_report
+from src.utils.experiments import save_experiment, list_experiments, load_experiment, delete_experiment
+from src.utils.config import BOUNDS, RESEARCH_PRESETS, PRIVACY_MODES, TRAJECTORY_TYPES, DEFAULT_TRAJECTORY_DIST
 
 
 # --- Demo Data Generation ---
@@ -285,6 +291,320 @@ class TestExport:
         result = create_export_zip(profiles, long, n_patients=1, days=1)
         assert isinstance(result, bytes)
         assert len(result) > 0
+
+
+# --- Nested Cohort Constraints ---
+
+class TestNestedCohortConstraints:
+    @pytest.fixture
+    def raw_profiles(self):
+        return generate_demo_profiles(500)
+
+    def test_conditional_htn_among_diabetic(self, raw_profiles):
+        cohort, stats = build_cohort(
+            raw_profiles, num_patients=200,
+            diabetes_pct=0.40, hypertension_pct=0.30,
+            htn_among_diabetic_pct=0.70,
+        )
+        diabetic = cohort[cohort["diabetes"] == 1]
+        if len(diabetic) > 0:
+            actual_htn_among_dm = diabetic["hypertension"].mean()
+            assert abs(actual_htn_among_dm - 0.70) < 0.15
+
+    def test_conditional_dm_among_elderly(self, raw_profiles):
+        cohort, stats = build_cohort(
+            raw_profiles, num_patients=200,
+            elderly_pct=0.50, diabetes_pct=0.30,
+            diabetes_among_elderly_pct=0.50,
+        )
+        elderly = cohort[cohort["age"] >= 60]
+        if len(elderly) > 0:
+            actual_dm_among_elderly = elderly["diabetes"].mean()
+            assert abs(actual_dm_among_elderly - 0.50) < 0.15
+
+    def test_constraint_stats_table(self, raw_profiles):
+        cohort, stats = build_cohort(
+            raw_profiles, num_patients=200,
+            elderly_pct=0.40, diabetes_pct=0.30,
+            htn_among_diabetic_pct=0.60,
+            diabetes_among_elderly_pct=0.40,
+        )
+        constraints = stats.get("constraints", [])
+        assert len(constraints) >= 3
+        for c in constraints:
+            assert "constraint" in c
+            assert "requested" in c
+            assert "actual" in c
+
+
+# --- Trajectory Types ---
+
+class TestTrajectoryTypes:
+    def test_trajectory_assignment(self):
+        cohort = pd.DataFrame({
+            "patient_id": [f"SYN-{i:06d}" for i in range(20)],
+            "age": [50] * 20, "gender": ["M"] * 20,
+            "bmi": [25] * 20, "diabetes": [0] * 20, "hypertension": [0] * 20,
+        })
+        engine = TemporalEngine(seed=42)
+        result = engine.generate_journeys(
+            cohort, days=10,
+            trajectory_dist={"stable": 0.5, "improving": 0.2, "worsening": 0.2, "fluctuating": 0.1},
+        )
+        assert "trajectory_type" in result.columns
+        types_found = result["trajectory_type"].unique()
+        assert len(types_found) >= 1
+        for t in types_found:
+            assert t in TRAJECTORY_TYPES
+
+    def test_trajectory_all_types(self):
+        cohort = pd.DataFrame({
+            "patient_id": [f"SYN-{i:06d}" for i in range(100)],
+            "age": [50] * 100, "gender": ["M"] * 100,
+            "bmi": [25] * 100, "diabetes": [0] * 100, "hypertension": [0] * 100,
+        })
+        engine = TemporalEngine(seed=42)
+        result = engine.generate_journeys(
+            cohort, days=10,
+            trajectory_dist={"stable": 0.25, "improving": 0.25, "worsening": 0.25, "fluctuating": 0.25},
+        )
+        types_found = set(result["trajectory_type"].unique())
+        assert types_found == set(TRAJECTORY_TYPES)
+
+
+# --- Privacy Modes ---
+
+class TestPrivacyModes:
+    def test_apply_low_mode(self):
+        orig = pd.DataFrame({"a": np.random.randn(50), "b": np.random.randn(50)})
+        synth = pd.DataFrame({"a": np.random.randn(30), "b": np.random.randn(30)})
+        filtered, stats = apply_privacy_mode(synth, orig, mode="low")
+        assert len(filtered) == len(synth)
+
+    def test_apply_high_mode(self):
+        orig = pd.DataFrame({"a": np.random.randn(50), "b": np.random.randn(50)})
+        synth = orig.copy()
+        filtered, stats = apply_privacy_mode(synth, orig, mode="high")
+        assert len(filtered) <= len(synth)
+
+    def test_real_to_real_baseline(self):
+        orig = pd.DataFrame({"a": np.random.randn(50), "b": np.random.randn(50)})
+        result = real_to_real_baseline(orig)
+        assert "mean_distance" in result
+        assert result["mean_distance"] > 0
+
+    def test_synth_to_synth_distances(self):
+        synth = pd.DataFrame({"a": np.random.randn(30), "b": np.random.randn(30)})
+        result = synth_to_synth_distances(synth)
+        assert "mean_distance" in result
+        assert result["mean_distance"] > 0
+
+    def test_privacy_modes_config(self):
+        assert "low" in PRIVACY_MODES
+        assert "balanced" in PRIVACY_MODES
+        assert "high" in PRIVACY_MODES
+        for mode, cfg in PRIVACY_MODES.items():
+            assert "label" in cfg
+            assert "near_copy_threshold" in cfg
+
+
+# --- Guardrails ---
+
+class TestGuardrails:
+    def test_check_plausibility_clean(self):
+        profiles = pd.DataFrame({
+            "age": [50, 60], "bmi": [25.0, 28.0],
+            "diabetes": [0, 1], "hypertension": [1, 0],
+        })
+        long = pd.DataFrame({
+            "systolic_bp": [120, 130], "diastolic_bp": [80, 85],
+            "steps": [5000, 6000], "medication_adherence": [0.8, 0.9],
+            "pain_score": [3, 5],
+        })
+        result = check_plausibility(profiles, long)
+        assert result["pass"] is True
+        assert result["violations_found"] == 0
+
+    def test_check_plausibility_violation(self):
+        profiles = pd.DataFrame({"age": [200], "bmi": [25.0], "diabetes": [0], "hypertension": [0]})
+        result = check_plausibility(profiles, None)
+        assert result["violations_found"] > 0
+
+    def test_repair_profiles(self):
+        profiles = pd.DataFrame({
+            "age": [200, -5, 50], "bmi": [100, 5, 25],
+            "diabetes": [0.7, 0.3, 1], "hypertension": [0, 1, 0],
+        })
+        repaired = repair_profiles(profiles)
+        assert repaired["age"].max() <= BOUNDS["age"][1]
+        assert repaired["age"].min() >= BOUNDS["age"][0]
+        assert set(repaired["diabetes"].unique()).issubset({0, 1})
+
+    def test_repair_longitudinal_bp(self):
+        long = pd.DataFrame({
+            "systolic_bp": [120, 80], "diastolic_bp": [130, 70],
+            "steps": [5000, 6000], "medication_adherence": [0.8, 0.9],
+            "pain_score": [3, 5],
+        })
+        repaired = repair_longitudinal(long)
+        assert (repaired["systolic_bp"] > repaired["diastolic_bp"]).all()
+
+
+# --- Experiment History ---
+
+class TestExperimentHistory:
+    def test_save_and_load(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("src.utils.experiments.EXPERIMENTS_DIR", tmp_path)
+        exp = save_experiment(
+            model="CTGANSynthesizer",
+            num_patients=100,
+            timeline_days=30,
+            constraints={"elderly_pct": 0.3},
+            privacy_mode="balanced",
+            seed=42,
+            trajectory_dist=DEFAULT_TRAJECTORY_DIST,
+        )
+        assert "experiment_id" in exp
+        loaded = load_experiment(exp["experiment_id"])
+        assert loaded is not None
+        assert loaded["model"] == "CTGANSynthesizer"
+        assert loaded["num_patients"] == 100
+
+    def test_list_experiments(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("src.utils.experiments.EXPERIMENTS_DIR", tmp_path)
+        for i in range(3):
+            save_experiment(
+                model="Test", num_patients=10, timeline_days=5,
+                constraints={}, privacy_mode="low", seed=i,
+                trajectory_dist=DEFAULT_TRAJECTORY_DIST,
+            )
+        exps = list_experiments()
+        assert len(exps) == 3
+
+    def test_delete_experiment(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("src.utils.experiments.EXPERIMENTS_DIR", tmp_path)
+        exp = save_experiment(
+            model="Test", num_patients=10, timeline_days=5,
+            constraints={}, privacy_mode="low", seed=42,
+            trajectory_dist=DEFAULT_TRAJECTORY_DIST,
+        )
+        assert delete_experiment(exp["experiment_id"]) is True
+        assert load_experiment(exp["experiment_id"]) is None
+
+
+# --- Validation Extensions ---
+
+class TestValidationExtensions:
+    def test_per_column_quality(self):
+        from src.validation.engine import compute_per_column_quality
+        orig = pd.DataFrame({
+            "age": np.random.normal(50, 10, 100),
+            "bmi": np.random.normal(25, 5, 100),
+            "gender": np.random.choice(["M", "F"], 100),
+        })
+        synth = pd.DataFrame({
+            "age": np.random.normal(50, 10, 100),
+            "bmi": np.random.normal(25, 5, 100),
+            "gender": np.random.choice(["M", "F"], 100),
+        })
+        result = compute_per_column_quality(orig, synth)
+        assert len(result) >= 2
+        for card in result:
+            assert "column" in card
+            assert "quality" in card
+
+    def test_subgroup_fidelity(self):
+        from src.validation.engine import compute_all_subgroup_fidelity
+        np.random.seed(42)
+        orig = pd.DataFrame({
+            "age": np.random.normal(50, 15, 100),
+            "bmi": np.random.normal(25, 5, 100),
+            "diabetes": np.random.choice([0, 1], 100),
+            "hypertension": np.random.choice([0, 1], 100),
+        })
+        synth = pd.DataFrame({
+            "age": np.random.normal(50, 15, 100),
+            "bmi": np.random.normal(25, 5, 100),
+            "diabetes": np.random.choice([0, 1], 100),
+            "hypertension": np.random.choice([0, 1], 100),
+        })
+        result = compute_all_subgroup_fidelity(orig, synth)
+        assert len(result) >= 1
+        for r in result:
+            assert "subgroup" in r or "label" in r
+
+
+# --- Quality Report ---
+
+class TestQualityReport:
+    def test_create_quality_report(self):
+        report = create_quality_report(
+            synthesizer_type="CTGANSynthesizer",
+            seed=42,
+            privacy_mode="balanced",
+        )
+        assert report["report_type"] == "ClinSynth Cohort Quality Report"
+        assert report["synthesizer"] == "CTGANSynthesizer"
+        assert len(report["limitations"]) > 0
+
+    def test_export_zip_with_quality_report(self):
+        profiles = pd.DataFrame({"patient_id": ["SYN-1"], "age": [50]})
+        long = pd.DataFrame({"patient_id": ["SYN-1"], "day": [1], "systolic_bp": [120]})
+        report = create_quality_report(synthesizer_type="Test", seed=0)
+        result = create_export_zip(
+            profiles, long, quality_report=report, n_patients=1, days=1,
+        )
+        assert isinstance(result, bytes)
+        assert len(result) > 100
+
+
+# --- Research Presets ---
+
+class TestResearchPresets:
+    def test_presets_exist(self):
+        assert len(RESEARCH_PRESETS) >= 7
+
+    def test_preset_structure(self):
+        for key, preset in RESEARCH_PRESETS.items():
+            assert "name" in preset
+            assert "description" in preset
+            assert "elderly_pct" in preset
+            assert "diabetes_pct" in preset
+            assert "hypertension_pct" in preset
+            assert "trajectory_dist" in preset
+            assert 0 <= preset["elderly_pct"] <= 1
+            assert 0 <= preset["diabetes_pct"] <= 1
+
+    def test_preset_trajectory_dist_sums(self):
+        for key, preset in RESEARCH_PRESETS.items():
+            traj = preset["trajectory_dist"]
+            total = sum(traj.values())
+            assert abs(total - 1.0) < 0.01, f"Preset {key} trajectory dist sums to {total}"
+
+
+# --- Reproducibility ---
+
+class TestReproducibility:
+    def test_cohort_deterministic(self):
+        raw = generate_demo_profiles(300)
+        cohort1, _ = build_cohort(raw, num_patients=100, seed=42)
+        cohort2, _ = build_cohort(raw, num_patients=100, seed=42)
+        pd.testing.assert_frame_equal(
+            cohort1.reset_index(drop=True),
+            cohort2.reset_index(drop=True),
+        )
+
+    def test_temporal_deterministic(self):
+        cohort = pd.DataFrame({
+            "patient_id": [f"SYN-{i:06d}" for i in range(10)],
+            "age": [50] * 10, "gender": ["M"] * 10,
+            "bmi": [25] * 10, "diabetes": [0] * 10, "hypertension": [0] * 10,
+        })
+        e1 = TemporalEngine(seed=42)
+        r1 = e1.generate_journeys(cohort, days=5)
+        e2 = TemporalEngine(seed=42)
+        r2 = e2.generate_journeys(cohort, days=5)
+        pd.testing.assert_frame_equal(r1, r2)
 
 
 if __name__ == "__main__":

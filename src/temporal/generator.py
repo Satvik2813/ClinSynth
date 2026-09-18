@@ -3,17 +3,18 @@
 Generates realistic daily health measurements for synthetic patients
 based on statistical patterns learned from source longitudinal data.
 
-Simulation assumptions:
-- Baseline vitals are influenced by age, BMI, diabetes, and hypertension status.
-- Day-to-day variation follows learned or estimated distributions.
-- Medication adherence may trend upward slightly over time.
-- BP in hypertensive patients may show slight downward trends (treatment effect).
-These are simulation assumptions for demonstration, not validated clinical models.
+Supports trajectory archetypes:
+- Stable: small variance around baseline
+- Improving: gradual simulated improvement
+- Worsening: gradual simulated deterioration
+- Fluctuating: larger bounded oscillations
+
+Simulation assumptions — not validated clinical models.
 """
 import numpy as np
 import pandas as pd
 
-from src.utils.config import BOUNDS, RANDOM_SEED
+from src.utils.config import BOUNDS, RANDOM_SEED, DEFAULT_TRAJECTORY_DIST, TRAJECTORY_TYPES
 
 
 class TemporalEngine:
@@ -68,31 +69,48 @@ class TemporalEngine:
         self.learned_params = params
 
     def generate_journeys(
-        self, cohort: pd.DataFrame, days: int = 30
+        self,
+        cohort: pd.DataFrame,
+        days: int = 30,
+        trajectory_dist: dict | None = None,
     ) -> pd.DataFrame:
         rng = np.random.default_rng(self.seed)
-        records = []
 
-        for idx, row in cohort.iterrows():
+        if trajectory_dist is None:
+            trajectory_dist = DEFAULT_TRAJECTORY_DIST
+
+        n = len(cohort)
+        types = list(trajectory_dist.keys())
+        probs = np.array([trajectory_dist.get(t, 0) for t in types], dtype=float)
+        probs = probs / probs.sum()
+        assignments = rng.choice(types, size=n, p=probs)
+
+        all_records = []
+
+        for idx, (_, row) in enumerate(cohort.iterrows()):
             pid = row["patient_id"]
             age = row.get("age", 55)
             bmi = row.get("bmi", 26)
             has_diabetes = int(row.get("diabetes", 0))
             has_hypertension = int(row.get("hypertension", 0))
+            traj_type = assignments[idx]
 
             baselines = self._compute_baselines(age, bmi, has_diabetes, has_hypertension, rng)
             day_noise = self._get_daily_noise_params()
 
-            trajectory = self._generate_trajectory(baselines, day_noise, days, rng, has_hypertension)
+            trajectory = self._generate_trajectory(
+                baselines, day_noise, days, rng, has_hypertension, traj_type,
+            )
 
             for day_idx, day_vals in enumerate(trajectory):
-                records.append({
+                all_records.append({
                     "patient_id": pid,
                     "day": day_idx + 1,
+                    "trajectory_type": traj_type,
                     **day_vals,
                 })
 
-        return pd.DataFrame(records)
+        return pd.DataFrame(all_records)
 
     def _compute_baselines(self, age, bmi, has_diabetes, has_hypertension, rng):
         p = self.learned_params or {}
@@ -132,26 +150,83 @@ class TemporalEngine:
             "pain_score": {"std": dc.get("pain_score", {}).get("std_change", 0.7)},
         }
 
-    def _generate_trajectory(self, baselines, noise_params, days, rng, has_hypertension):
+    def _get_trajectory_trends(self, traj_type: str, has_hypertension: int):
+        if traj_type == "stable":
+            return {
+                "systolic_bp": -0.02 if has_hypertension else 0.0,
+                "diastolic_bp": 0.0,
+                "steps": 0.0,
+                "medication_adherence": 0.001,
+                "pain_score": 0.0,
+                "noise_scale": 0.8,
+            }
+        elif traj_type == "improving":
+            return {
+                "systolic_bp": -0.15 if has_hypertension else -0.05,
+                "diastolic_bp": -0.03,
+                "steps": 15.0,
+                "medication_adherence": 0.004,
+                "pain_score": -0.015,
+                "noise_scale": 0.7,
+            }
+        elif traj_type == "worsening":
+            return {
+                "systolic_bp": 0.12,
+                "diastolic_bp": 0.04,
+                "steps": -20.0,
+                "medication_adherence": -0.003,
+                "pain_score": 0.02,
+                "noise_scale": 0.9,
+            }
+        elif traj_type == "fluctuating":
+            return {
+                "systolic_bp": -0.03 if has_hypertension else 0.0,
+                "diastolic_bp": 0.0,
+                "steps": 0.0,
+                "medication_adherence": 0.001,
+                "pain_score": 0.0,
+                "noise_scale": 1.6,
+            }
+        return {
+            "systolic_bp": 0.0, "diastolic_bp": 0.0, "steps": 0.0,
+            "medication_adherence": 0.0, "pain_score": 0.0, "noise_scale": 1.0,
+        }
+
+    def _generate_trajectory(self, baselines, noise_params, days, rng, has_hypertension, traj_type="stable"):
         trajectory = []
         current = dict(baselines)
 
-        sys_trend = -0.08 if has_hypertension else 0.0
-        adh_trend = 0.002
+        trends = self._get_trajectory_trends(traj_type, has_hypertension)
+        noise_scale = trends["noise_scale"]
 
         for day in range(days):
-            vals = {}
-            current["systolic_bp"] += sys_trend + rng.normal(0, noise_params["systolic_bp"]["std"])
-            current["diastolic_bp"] += rng.normal(0, noise_params["diastolic_bp"]["std"])
-            current["steps"] += rng.normal(0, noise_params["steps"]["std"]) * 0.3
-            current["medication_adherence"] += adh_trend + rng.normal(0, noise_params["medication_adherence"]["std"])
-            current["pain_score"] += rng.normal(0, noise_params["pain_score"]["std"]) * 0.3
+            current["systolic_bp"] += trends["systolic_bp"] + rng.normal(0, noise_params["systolic_bp"]["std"] * noise_scale)
+            current["diastolic_bp"] += trends["diastolic_bp"] + rng.normal(0, noise_params["diastolic_bp"]["std"] * noise_scale)
+            current["steps"] += trends["steps"] + rng.normal(0, noise_params["steps"]["std"] * noise_scale) * 0.3
+            current["medication_adherence"] += trends["medication_adherence"] + rng.normal(0, noise_params["medication_adherence"]["std"] * noise_scale)
+            current["pain_score"] += trends["pain_score"] + rng.normal(0, noise_params["pain_score"]["std"] * noise_scale) * 0.3
 
-            vals["systolic_bp"] = round(float(np.clip(current["systolic_bp"], *BOUNDS["systolic_bp"])), 1)
-            vals["diastolic_bp"] = round(float(np.clip(current["diastolic_bp"], *BOUNDS["diastolic_bp"])), 1)
-            vals["steps"] = int(np.clip(current["steps"], *BOUNDS["steps"]))
-            vals["medication_adherence"] = round(float(np.clip(current["medication_adherence"], *BOUNDS["medication_adherence"])), 3)
-            vals["pain_score"] = round(float(np.clip(current["pain_score"], *BOUNDS["pain_score"])), 1)
+            if traj_type == "fluctuating" and day > 0:
+                period = rng.uniform(5, 10)
+                amp = rng.uniform(0.3, 0.8)
+                current["systolic_bp"] += amp * np.sin(2 * np.pi * day / period) * 2
+                current["steps"] += amp * np.sin(2 * np.pi * day / (period + 2)) * 200
+
+            sys_val = round(float(np.clip(current["systolic_bp"], *BOUNDS["systolic_bp"])), 1)
+            dia_val = round(float(np.clip(current["diastolic_bp"], *BOUNDS["diastolic_bp"])), 1)
+
+            if dia_val >= sys_val:
+                dia_val = sys_val - rng.uniform(5, 15)
+                dia_val = round(float(np.clip(dia_val, *BOUNDS["diastolic_bp"])), 1)
+                current["diastolic_bp"] = dia_val
+
+            vals = {
+                "systolic_bp": sys_val,
+                "diastolic_bp": dia_val,
+                "steps": int(np.clip(current["steps"], *BOUNDS["steps"])),
+                "medication_adherence": round(float(np.clip(current["medication_adherence"], *BOUNDS["medication_adherence"])), 3),
+                "pain_score": round(float(np.clip(current["pain_score"], *BOUNDS["pain_score"])), 1),
+            }
 
             trajectory.append(vals)
 

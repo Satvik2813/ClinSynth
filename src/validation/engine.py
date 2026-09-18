@@ -163,3 +163,144 @@ def compute_fidelity_summary(profile_results: dict, longitudinal_results: dict) 
         "interpretation": "Score from 0 to 1 where 1 means perfect distributional match. "
                           "Based on KS statistics, total variation distance, and correlation preservation.",
     }
+
+
+def compute_per_column_quality(original: pd.DataFrame, synthetic: pd.DataFrame) -> list[dict]:
+    cards = []
+    num_cols = original.select_dtypes(include=[np.number]).columns.tolist()
+    common_num = [c for c in num_cols if c in synthetic.columns and c != "patient_id"]
+
+    for col in common_num:
+        orig = original[col].dropna()
+        synth = synthetic[col].dropna()
+        if len(orig) == 0 or len(synth) == 0:
+            continue
+
+        ks = ks_test(orig, synth)
+        ks_val = ks["ks_statistic"]
+        if ks_val < 0.05:
+            quality = "Excellent (KS < 0.05)"
+        elif ks_val < 0.10:
+            quality = "Good (KS < 0.10)"
+        elif ks_val < 0.20:
+            quality = "Fair (KS < 0.20)"
+        else:
+            quality = "Poor (KS >= 0.20)"
+
+        cards.append({
+            "column": col,
+            "type": "numerical",
+            "mean_diff": round(abs(float(orig.mean()) - float(synth.mean())), 4),
+            "std_diff": round(abs(float(orig.std()) - float(synth.std())), 4),
+            "ks_statistic": ks_val,
+            "quality": quality,
+        })
+
+    cat_cols = original.select_dtypes(exclude=[np.number]).columns.tolist()
+    common_cat = [c for c in cat_cols if c in synthetic.columns and c != "patient_id"]
+    for col in common_cat:
+        cmp = categorical_comparison(original[col], synthetic[col])
+        tvd = cmp["total_variation_distance"]
+        if tvd < 0.03:
+            quality = "Excellent (TVD < 0.03)"
+        elif tvd < 0.08:
+            quality = "Good (TVD < 0.08)"
+        elif tvd < 0.15:
+            quality = "Fair (TVD < 0.15)"
+        else:
+            quality = "Poor (TVD >= 0.15)"
+
+        cards.append({
+            "column": col,
+            "type": "categorical",
+            "tvd": tvd,
+            "quality": quality,
+        })
+
+    return cards
+
+
+def compute_subgroup_fidelity(
+    original: pd.DataFrame,
+    synthetic: pd.DataFrame,
+    subgroup_col: str,
+    subgroup_val,
+) -> dict:
+    orig_sub = original[original[subgroup_col] == subgroup_val]
+    synth_sub = synthetic[synthetic[subgroup_col] == subgroup_val]
+
+    if len(orig_sub) < 5 or len(synth_sub) < 5:
+        return {
+            "subgroup": f"{subgroup_col}={subgroup_val}",
+            "original_n": len(orig_sub),
+            "synthetic_n": len(synth_sub),
+            "warning": "Sample too small for reliable comparison",
+            "fidelity": None,
+        }
+
+    num_cols = orig_sub.select_dtypes(include=[np.number]).columns.tolist()
+    common = [c for c in num_cols if c in synth_sub.columns and c != "patient_id"]
+
+    scores = []
+    details = {}
+    for col in common:
+        o = orig_sub[col].dropna()
+        s = synth_sub[col].dropna()
+        if len(o) > 0 and len(s) > 0:
+            k = ks_test(o, s)
+            scores.append(1.0 - min(k["ks_statistic"], 1.0))
+            details[col] = k["ks_statistic"]
+
+    fidelity = round(float(np.mean(scores)), 4) if scores else None
+
+    return {
+        "subgroup": f"{subgroup_col}={subgroup_val}",
+        "original_n": len(orig_sub),
+        "synthetic_n": len(synth_sub),
+        "fidelity": fidelity,
+        "column_ks": details,
+    }
+
+
+def compute_all_subgroup_fidelity(original: pd.DataFrame, synthetic: pd.DataFrame) -> list[dict]:
+    results = []
+    subgroups = [
+        ("diabetes", 0, "Non-Diabetic"),
+        ("diabetes", 1, "Diabetic"),
+        ("hypertension", 0, "Non-Hypertensive"),
+        ("hypertension", 1, "Hypertensive"),
+    ]
+
+    for col, val, label in subgroups:
+        if col in original.columns and col in synthetic.columns:
+            r = compute_subgroup_fidelity(original, synthetic, col, val)
+            r["label"] = label
+            results.append(r)
+
+    if "age" in original.columns and "age" in synthetic.columns:
+        for label, mask_fn in [("Elderly (age >= 60)", lambda df: df["age"] >= 60),
+                                ("Non-Elderly (age < 60)", lambda df: df["age"] < 60)]:
+            orig_sub = original[mask_fn(original)]
+            synth_sub = synthetic[mask_fn(synthetic)]
+            if len(orig_sub) >= 5 and len(synth_sub) >= 5:
+                num_cols = orig_sub.select_dtypes(include=[np.number]).columns.tolist()
+                common = [c for c in num_cols if c in synth_sub.columns and c != "patient_id"]
+                scores = []
+                details = {}
+                for col in common:
+                    o = orig_sub[col].dropna()
+                    s = synth_sub[col].dropna()
+                    if len(o) > 0 and len(s) > 0:
+                        k = ks_test(o, s)
+                        scores.append(1.0 - min(k["ks_statistic"], 1.0))
+                        details[col] = k["ks_statistic"]
+                results.append({
+                    "subgroup": label,
+                    "label": label,
+                    "original_n": len(orig_sub),
+                    "synthetic_n": len(synth_sub),
+                    "fidelity": round(float(np.mean(scores)), 4) if scores else None,
+                    "column_ks": details,
+                })
+
+    return results

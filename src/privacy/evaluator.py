@@ -2,16 +2,23 @@
 
 Evaluates potential privacy leakage between original and synthetic data.
 These are screening metrics, not formal privacy guarantees.
+
+Privacy modes (low/balanced/high) control the strictness of near-copy
+rejection and noise injection. They do NOT implement formal differential
+privacy.
 """
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 
+from src.utils.config import PRIVACY_MODES
+
 
 def detect_exact_duplicates(original: pd.DataFrame, synthetic: pd.DataFrame) -> dict:
     compare_cols = [c for c in original.columns if c in synthetic.columns and c != "patient_id"]
     if not compare_cols:
-        return {"exact_duplicates": 0, "columns_compared": []}
+        return {"exact_duplicates": 0, "columns_compared": [], "total_synthetic_records": len(synthetic),
+                "total_original_records": len(original), "duplicate_rate": 0.0}
 
     orig_normalized = original[compare_cols].copy()
     synth_normalized = synthetic[compare_cols].copy()
@@ -38,20 +45,14 @@ def detect_exact_duplicates(original: pd.DataFrame, synthetic: pd.DataFrame) -> 
     }
 
 
-def nearest_neighbor_analysis(
-    original: pd.DataFrame,
-    synthetic: pd.DataFrame,
-    sample_size: int = 500,
-    seed: int = 42,
-) -> dict:
+def _prepare_scaled_data(original, synthetic):
     compare_cols = [c for c in original.columns if c in synthetic.columns and c != "patient_id"]
     if not compare_cols:
-        return {"error": "No common columns for nearest neighbor analysis"}
+        return None, None, compare_cols
 
     orig = original[compare_cols].copy()
     synth = synthetic[compare_cols].copy()
 
-    label_encoders = {}
     for col in compare_cols:
         if not pd.api.types.is_numeric_dtype(orig[col]):
             le = LabelEncoder()
@@ -59,7 +60,6 @@ def nearest_neighbor_analysis(
             le.fit(combined)
             orig[col] = le.transform(orig[col].astype(str))
             synth[col] = le.transform(synth[col].astype(str))
-            label_encoders[col] = le
         else:
             orig[col] = orig[col].fillna(orig[col].median())
             synth[col] = synth[col].fillna(synth[col].median())
@@ -68,22 +68,39 @@ def nearest_neighbor_analysis(
     orig_scaled = scaler.fit_transform(orig.values.astype(float))
     synth_scaled = scaler.transform(synth.values.astype(float))
 
-    rng = np.random.default_rng(seed)
-    if len(synth_scaled) > sample_size:
-        indices = rng.choice(len(synth_scaled), size=sample_size, replace=False)
-        synth_sample = synth_scaled[indices]
+    return orig_scaled, synth_scaled, compare_cols
+
+
+def _compute_nn_distances(source, target, sample_size, rng):
+    if len(source) > sample_size:
+        indices = rng.choice(len(source), size=sample_size, replace=False)
+        source_sample = source[indices]
     else:
-        synth_sample = synth_scaled
+        source_sample = source
 
     distances = []
     batch_size = 100
-    for i in range(0, len(synth_sample), batch_size):
-        batch = synth_sample[i:i + batch_size]
-        dists = np.linalg.norm(batch[:, np.newaxis] - orig_scaled[np.newaxis, :], axis=2)
+    for i in range(0, len(source_sample), batch_size):
+        batch = source_sample[i:i + batch_size]
+        dists = np.linalg.norm(batch[:, np.newaxis] - target[np.newaxis, :], axis=2)
         min_dists = dists.min(axis=1)
         distances.extend(min_dists.tolist())
 
-    distances = np.array(distances)
+    return np.array(distances)
+
+
+def nearest_neighbor_analysis(
+    original: pd.DataFrame,
+    synthetic: pd.DataFrame,
+    sample_size: int = 500,
+    seed: int = 42,
+) -> dict:
+    orig_scaled, synth_scaled, compare_cols = _prepare_scaled_data(original, synthetic)
+    if orig_scaled is None:
+        return {"error": "No common columns for nearest neighbor analysis"}
+
+    rng = np.random.default_rng(seed)
+    distances = _compute_nn_distances(synth_scaled, orig_scaled, sample_size, rng)
 
     return {
         "sample_size": len(distances),
@@ -102,6 +119,144 @@ def nearest_neighbor_analysis(
     }
 
 
+def real_to_real_baseline(
+    original: pd.DataFrame,
+    sample_size: int = 300,
+    seed: int = 42,
+) -> dict:
+    orig_scaled, _, _ = _prepare_scaled_data(original, original)
+    if orig_scaled is None or len(orig_scaled) < 3:
+        return {"error": "Not enough data for real-to-real baseline"}
+
+    rng = np.random.default_rng(seed)
+    n = len(orig_scaled)
+    actual_sample = min(sample_size, n)
+
+    if n > actual_sample:
+        indices = rng.choice(n, size=actual_sample, replace=False)
+        sample = orig_scaled[indices]
+    else:
+        sample = orig_scaled
+
+    distances = []
+    batch_size = 50
+    for i in range(0, len(sample), batch_size):
+        batch = sample[i:i + batch_size]
+        dists = np.linalg.norm(batch[:, np.newaxis] - orig_scaled[np.newaxis, :], axis=2)
+        for j in range(len(batch)):
+            row_dists = dists[j]
+            row_dists_sorted = np.sort(row_dists)
+            if len(row_dists_sorted) > 1:
+                distances.append(float(row_dists_sorted[1]))
+
+    distances = np.array(distances)
+    if len(distances) == 0:
+        return {"error": "Could not compute real-to-real distances"}
+
+    return {
+        "sample_size": len(distances),
+        "mean_distance": round(float(distances.mean()), 6),
+        "median_distance": round(float(np.median(distances)), 6),
+        "min_distance": round(float(distances.min()), 6),
+        "q5_distance": round(float(np.percentile(distances, 5)), 6),
+        "q25_distance": round(float(np.percentile(distances, 25)), 6),
+        "q75_distance": round(float(np.percentile(distances, 75)), 6),
+    }
+
+
+def synth_to_synth_distances(
+    synthetic: pd.DataFrame,
+    sample_size: int = 300,
+    seed: int = 42,
+) -> dict:
+    orig_scaled, _, _ = _prepare_scaled_data(synthetic, synthetic)
+    if orig_scaled is None or len(orig_scaled) < 3:
+        return {"error": "Not enough data"}
+
+    rng = np.random.default_rng(seed)
+    n = len(orig_scaled)
+    actual_sample = min(sample_size, n)
+
+    if n > actual_sample:
+        indices = rng.choice(n, size=actual_sample, replace=False)
+        sample = orig_scaled[indices]
+    else:
+        sample = orig_scaled
+
+    distances = []
+    batch_size = 50
+    for i in range(0, len(sample), batch_size):
+        batch = sample[i:i + batch_size]
+        dists = np.linalg.norm(batch[:, np.newaxis] - orig_scaled[np.newaxis, :], axis=2)
+        for j in range(len(batch)):
+            row_dists = dists[j]
+            row_dists_sorted = np.sort(row_dists)
+            if len(row_dists_sorted) > 1:
+                distances.append(float(row_dists_sorted[1]))
+
+    distances = np.array(distances)
+    if len(distances) == 0:
+        return {"error": "Could not compute synth-to-synth distances"}
+
+    return {
+        "sample_size": len(distances),
+        "mean_distance": round(float(distances.mean()), 6),
+        "median_distance": round(float(np.median(distances)), 6),
+        "min_distance": round(float(distances.min()), 6),
+    }
+
+
+def apply_privacy_mode(
+    synthetic: pd.DataFrame,
+    original: pd.DataFrame,
+    mode: str = "balanced",
+    seed: int = 42,
+) -> tuple[pd.DataFrame, dict]:
+    config = PRIVACY_MODES.get(mode, PRIVACY_MODES["balanced"])
+    rng = np.random.default_rng(seed)
+
+    result = synthetic.copy()
+    stats = {"mode": mode, "records_rejected": 0, "records_noised": 0, "total_records": len(result)}
+
+    rejection_threshold = config["rejection_threshold"]
+    noise_scale = config["noise_scale"]
+
+    if rejection_threshold > 0 and len(original) > 0:
+        orig_scaled, synth_scaled, compare_cols = _prepare_scaled_data(original, result)
+        if orig_scaled is not None and synth_scaled is not None:
+            keep_mask = np.ones(len(synth_scaled), dtype=bool)
+            batch_size = 200
+            for i in range(0, len(synth_scaled), batch_size):
+                batch = synth_scaled[i:i + batch_size]
+                dists = np.linalg.norm(batch[:, np.newaxis] - orig_scaled[np.newaxis, :], axis=2)
+                min_dists = dists.min(axis=1)
+                keep_mask[i:i + len(batch)] = min_dists >= rejection_threshold
+
+            rejected_count = int((~keep_mask).sum())
+            stats["records_rejected"] = rejected_count
+
+            if rejected_count < len(result) * 0.5:
+                result = result[keep_mask].reset_index(drop=True)
+            else:
+                stats["rejection_capped"] = True
+
+    if noise_scale > 0:
+        numeric_cols = result.select_dtypes(include=[np.number]).columns.tolist()
+        noise_cols = [c for c in numeric_cols if c not in ("patient_id", "day")]
+        for col in noise_cols:
+            col_std = result[col].std()
+            if col_std > 0:
+                noise = rng.normal(0, col_std * noise_scale, size=len(result))
+                result[col] = result[col] + noise
+                stats["records_noised"] = len(result)
+
+    if "patient_id" in result.columns:
+        result["patient_id"] = [f"SYN-{i+1:06d}" for i in range(len(result))]
+
+    stats["final_records"] = len(result)
+    return result, stats
+
+
 def privacy_screening(
     original: pd.DataFrame,
     synthetic: pd.DataFrame,
@@ -111,6 +266,8 @@ def privacy_screening(
 ) -> dict:
     dup_result = detect_exact_duplicates(original, synthetic)
     nn_result = nearest_neighbor_analysis(original, synthetic)
+    rr_result = real_to_real_baseline(original)
+    ss_result = synth_to_synth_distances(synthetic)
 
     checks = []
 
@@ -148,6 +305,8 @@ def privacy_screening(
         "checks": checks,
         "exact_duplicates": dup_result,
         "nearest_neighbor": nn_result,
+        "real_to_real_baseline": rr_result,
+        "synth_to_synth": ss_result,
         "disclaimer": (
             "These metrics provide privacy screening, not formal privacy guarantees. "
             "Synthetic data generated via statistical models can reduce exposure of "

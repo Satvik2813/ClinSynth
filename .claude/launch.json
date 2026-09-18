@@ -2,7 +2,19 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "clinsynth",
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
+      "port": 3000
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "backend.app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "streamlit-legacy",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "streamlit", "run", "app.py", "--server.headless", "true"],
       "port": 8501

@@ -1,5 +1,4 @@
 """ClinSynth FastAPI backend."""
-import os
 import sys
 from pathlib import Path
 
@@ -17,17 +16,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
-frontend_url = os.getenv(
-    "FRONTEND_URL",
-    "http://localhost:3000",
-)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        frontend_url,
+        "https://clin-synth.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],

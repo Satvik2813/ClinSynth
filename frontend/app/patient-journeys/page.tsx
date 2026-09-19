@@ -68,9 +68,18 @@ export default function PatientJourneysPage() {
   }
 
   const demo = journey?.demographics;
-  const vitalsKeys = journey?.journey && journey.journey.length > 0
-    ? Object.keys(journey.journey[0]).filter((k) => k !== "visit_day" && k !== "patient_id" && k !== "day")
-    : [];
+  const chartData = (journey?.journey || []).map((r) => {
+    const row = r as Record<string, string | number | null | undefined>;
+    return {
+      ...row,
+      day: row.day != null ? Number(row.day) : undefined,
+      systolic_bp: row.systolic_bp != null ? Number(row.systolic_bp) : undefined,
+      diastolic_bp: row.diastolic_bp != null ? Number(row.diastolic_bp) : undefined,
+      steps: row.steps != null ? Number(row.steps) : undefined,
+      medication_adherence: row.medication_adherence != null ? Number(row.medication_adherence) : undefined,
+      pain_score: row.pain_score != null ? Number(row.pain_score) : undefined,
+    };
+  });
 
   return (
     <div>
@@ -144,33 +153,56 @@ export default function PatientJourneysPage() {
             </div>
           )}
 
-          {journey.journey.length > 0 && (
-            <div className="card" style={{ marginBottom: "1rem" }}>
-              <h2 className="section-title">Vitals Over Time</h2>
-              <ResponsiveContainer width="100%" height={350}>
-                <LineChart data={journey.journey}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis
-                    dataKey="visit_day"
-                    label={{ value: "Visit Day", position: "insideBottom", offset: -5 }}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Legend />
-                  {vitalsKeys.map((key, i) => (
-                    <Line
-                      key={key}
-                      type="monotone"
-                      dataKey={key}
-                      stroke={COLORS[i % COLORS.length]}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      name={key.replace(/_/g, " ")}
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
+          {journey.journey && journey.journey.length === 0 ? (
+            <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: "3rem", marginBottom: "1rem" }}>
+              No longitudinal records available for this patient.
+            </div>
+          ) : chartData.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1rem" }}>
+              <div className="card">
+                <h2 className="section-title">Blood Pressure Over Time</h2>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="day" label={{ value: "Visit Day", position: "insideBottom", offset: -5 }} tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="systolic_bp" stroke={COLORS[0]} strokeWidth={2} dot={{ r: 3 }} name="Systolic BP" />
+                    <Line type="monotone" dataKey="diastolic_bp" stroke={COLORS[1]} strokeWidth={2} dot={{ r: 3 }} name="Diastolic BP" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="card">
+                <h2 className="section-title">Activity Over Time</h2>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="day" label={{ value: "Visit Day", position: "insideBottom", offset: -5 }} tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="steps" stroke={COLORS[2]} strokeWidth={2} dot={{ r: 3 }} name="Steps" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="card">
+                <h2 className="section-title">Medication Adherence & Pain</h2>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="day" label={{ value: "Visit Day", position: "insideBottom", offset: -5 }} tick={{ fontSize: 12 }} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={[0, 1]} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} domain={[0, 10]} />
+                    <Tooltip />
+                    <Legend />
+                    <Line yAxisId="left" type="monotone" dataKey="medication_adherence" stroke={COLORS[3]} strokeWidth={2} dot={{ r: 3 }} name="Medication Adherence" />
+                    <Line yAxisId="right" type="monotone" dataKey="pain_score" stroke={COLORS[4]} strokeWidth={2} dot={{ r: 3 }} name="Pain Score" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           )}
 

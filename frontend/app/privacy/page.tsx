@@ -12,6 +12,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
+const normalizeStatus = (status: string | undefined): string => {
+  if (!status) return "UNKNOWN";
+  const s = status.toUpperCase().trim();
+  if (s === "PASS" || s === "PASSED") return "PASSED";
+  if (s === "REVIEW_NEEDED" || s === "REVIEW NEEDED") return "REVIEW NEEDED";
+  return s;
+};
+
 export default function PrivacyPage() {
   const { data, error, isLoading, mutate } = useApi<PrivacyResult>("/privacy", { errorRetryCount: 0 });
   const { data: currentCohort } = useApi<unknown>("/cohort/current", { errorRetryCount: 0 });
@@ -37,9 +45,11 @@ export default function PrivacyPage() {
         throw new Error(body.detail || `Privacy screening failed: ${res.status}`);
       }
       const freshData: PrivacyResult = await res.json();
+      freshData.overall_status = normalizeStatus(freshData.overall_status);
       mutate(freshData, false);
-      const status = freshData?.overall_status;
-      if (status?.toUpperCase() === "PASS") {
+      
+      const status = freshData.overall_status;
+      if (status === "PASSED") {
         toast.success("Privacy screening completed", {
           id: toastId,
           description: "Status: PASSED",
@@ -47,7 +57,7 @@ export default function PrivacyPage() {
       } else {
         toast.warning("Privacy screening completed", {
           id: toastId,
-          description: "Status: REVIEW NEEDED",
+          description: `Status: ${status}`,
         });
       }
       globalMutate("/overview");
@@ -132,8 +142,8 @@ export default function PrivacyPage() {
 
       <div className="card" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "1rem" }}>
         <span style={{ fontSize: "0.875rem", fontWeight: 500, color: "var(--foreground)" }}>Overall Status:</span>
-        <span className={`badge ${data.overall_status === "PASS" ? "badge-success" : "badge-danger"}`}>
-          {data.overall_status}
+        <span className={`badge ${normalizeStatus(data.overall_status) === "PASSED" ? "badge-success" : "badge-danger"}`}>
+          {normalizeStatus(data.overall_status)}
         </span>
       </div>
 

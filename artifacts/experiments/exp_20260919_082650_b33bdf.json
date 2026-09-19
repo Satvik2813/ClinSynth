@@ -1,0 +1,41 @@
+{
+  "experiment_id": "exp_20260919_082650_b33bdf",
+  "timestamp": "2026-09-19T08:26:50.310165",
+  "model": "GaussianCopulaSynthesizer",
+  "num_patients": 50,
+  "timeline_days": 5,
+  "constraints": {
+    "num_patients": 50,
+    "timeline_days": 5,
+    "elderly_pct": 0.3,
+    "diabetes_pct": 0.25,
+    "hypertension_pct": 0.2,
+    "htn_among_diabetic_pct": 0.4,
+    "diabetes_among_elderly_pct": 0.3,
+    "privacy_mode": "low",
+    "seed": 42,
+    "trajectory_dist": {
+      "stable": 0.5,
+      "improving": 0.2,
+      "worsening": 0.15,
+      "fluctuating": 0.15
+    },
+    "preset": null
+  },
+  "privacy_mode": "low",
+  "seed": 42,
+  "trajectory_dist": {
+    "stable": 0.5,
+    "improving": 0.2,
+    "worsening": 0.15,
+    "fluctuating": 0.15
+  },
+  "fidelity_summary": {
+    "overall_fidelity": 0.8742,
+    "component_count": 11,
+    "formula": "mean(1 - KS_statistic for numerical, 1 - TVD for categorical, 1 - mean_corr_diff)",
+    "interpretation": "Score from 0 to 1 where 1 means perfect distributional match. Based on KS statistics, total variation distance, and correlation preservation."
+  },
+  "privacy_summary": null,
+  "model_comparison": null
+}

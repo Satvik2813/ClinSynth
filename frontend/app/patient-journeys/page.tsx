@@ -118,7 +118,7 @@ export default function PatientJourneysPage() {
                 </div>
                 <div>
                   <div className="metric-label">Age</div>
-                  <div style={{ fontWeight: 600 }}>{demo.age}</div>
+                  <div style={{ fontWeight: 600 }}>{Math.round(Number(demo.age))}</div>
                 </div>
                 <div>
                   <div className="metric-label">Gender</div>

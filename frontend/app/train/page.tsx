@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { api, TrainResult, TrainInfo } from "@/lib/api";
 import { useApi } from "@/lib/swr";
 import { friendlyError } from "@/lib/errors";
@@ -36,7 +36,25 @@ export default function TrainPage() {
   }, []);
 
   const [training, setTraining] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [trainResult, setTrainResult] = useState<TrainResult | null>(null);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (training) {
+      setElapsed(0);
+      interval = setInterval(() => {
+        setElapsed((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [training]);
+
+  const formatElapsed = (seconds: number) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+    const s = (seconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
   const { data: dataSummary } = useApi<unknown>("/data/summary", { errorRetryCount: 0 });
 
   const modelLabel = synthType === "CTGANSynthesizer" ? "CTGAN" : "Gaussian Copula";
@@ -190,7 +208,7 @@ export default function TrainPage() {
 
           <button className="btn-primary" onClick={handleTrain} disabled={training} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
             {training && <span className="spinner" />}
-            {training ? "Training..." : "Start Training"}
+            {training ? `Training... ${formatElapsed(elapsed)} elapsed` : "Start Training"}
           </button>
         </div>
       </div>

@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { api, Overview } from "@/lib/api";
+import { useApi } from "@/lib/swr";
+import { friendlyError } from "@/lib/errors";
+import { SkeletonMetrics, SkeletonCard } from "@/components/skeleton";
+import { StatusBadge } from "@/components/status-badge";
+import { useState } from "react";
+import { toast } from "sonner";
 
 const PIPELINE_STEPS = [
   "Source Data",
@@ -15,51 +20,38 @@ const PIPELINE_STEPS = [
 ];
 
 export default function DashboardPage() {
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: overview, error, isLoading, mutate } = useApi<Overview>("/overview");
   const [demoLoading, setDemoLoading] = useState(false);
 
-  const fetchOverview = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await api.getOverview();
-      setOverview(data);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load overview";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchOverview();
-  }, []);
-
   const handleLoadDemo = async () => {
+    const toastId = toast.loading("Loading demo dataset...");
     try {
       setDemoLoading(true);
-      setError(null);
-      await api.loadDemo();
-      await fetchOverview();
+      const data = await api.loadDemo();
+      toast.success("Demo dataset loaded successfully", {
+        id: toastId,
+        description: `${data.n_patients} patients and ${data.n_longitudinal_records.toLocaleString()} longitudinal records are ready.`,
+      });
+      mutate();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load demo data";
-      setError(message);
+      toast.error("Failed to load demo dataset", {
+        id: toastId,
+        description: friendlyError(err),
+      });
     } finally {
       setDemoLoading(false);
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 40, height: 40, border: "3px solid var(--border)", borderTopColor: "var(--primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 1rem" }} />
-          <p style={{ color: "var(--muted)", fontSize: "0.875rem" }}>Loading...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div>
+        <div style={{ marginBottom: "2rem" }}>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--primary-dark)" }}>ClinSynth</h1>
+          <p style={{ fontSize: "1rem", fontWeight: 500, color: "var(--primary)", marginTop: "0.125rem" }}>Clinical Research Twin Engine</p>
         </div>
+        <SkeletonCard lines={2} />
+        <div style={{ marginTop: "1rem" }}><SkeletonMetrics count={7} /></div>
       </div>
     );
   }
@@ -70,10 +62,10 @@ export default function DashboardPage() {
         <h1 className="page-title">ClinSynth</h1>
         <p className="page-subtitle">Clinical Research Twin Engine</p>
         <div className="card" style={{ marginTop: "1.5rem", textAlign: "center", padding: "3rem 1.5rem" }}>
-          <p style={{ color: "var(--danger)", marginBottom: "1rem" }}>{error}</p>
-          <button className="btn-primary" onClick={fetchOverview}>Retry</button>
+          <p style={{ color: "var(--danger)", marginBottom: "1rem" }}>{friendlyError(error)}</p>
+          <button className="btn-primary" onClick={() => mutate()}>Retry</button>
           <button className="btn-secondary" onClick={handleLoadDemo} disabled={demoLoading} style={{ marginLeft: "0.75rem" }}>
-            {demoLoading ? "Loading..." : "Load Demo Data"}
+            {demoLoading ? (<><span className="spinner" /> Loading Dataset...</>) : "Load Demo Data"}
           </button>
         </div>
       </div>
@@ -106,7 +98,8 @@ export default function DashboardPage() {
               From scarce patient data to research-ready synthetic cohorts.
             </p>
           </div>
-          <button className="btn-primary" onClick={handleLoadDemo} disabled={demoLoading}>
+          <button className="btn-primary" onClick={handleLoadDemo} disabled={demoLoading} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {demoLoading && <span className="spinner" />}
             {demoLoading ? "Loading Demo..." : "Load Demo Data"}
           </button>
         </div>
@@ -116,15 +109,19 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {error && (
-        <div className="card" style={{ marginBottom: "1rem", background: "var(--danger-light)", borderColor: "var(--danger)" }}>
-          <p style={{ color: "#8B2E26", fontSize: "0.875rem", margin: 0 }}>{error}</p>
-        </div>
-      )}
-
-      {/* Pipeline */}
+      {/* Pipeline Status */}
       <div className="card" style={{ marginBottom: "1.5rem" }}>
-        <h2 className="section-title">Pipeline</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem" }}>
+          <h2 className="section-title" style={{ marginBottom: 0 }}>Pipeline</h2>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            <StatusBadge label="Data" status={overview.data_loaded ? "ready" : "not_ready"} />
+            <StatusBadge label="Model" status={overview.model_trained ? "trained" : "not_trained"} />
+            <StatusBadge label="Cohort" status={overview.cohort_generated ? "generated" : "not_generated"} />
+            <StatusBadge label="Validation" status={overview.fidelity_score != null ? "evaluated" : "not_evaluated"} />
+            <StatusBadge label="Privacy" status={overview.privacy_status != null ? "evaluated" : "not_evaluated"} />
+            <StatusBadge label="Research Utility" status={overview.utility_retention != null ? "evaluated" : "not_evaluated"} />
+          </div>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", flexWrap: "wrap" }}>
           {PIPELINE_STEPS.map((step, i) => {
             const done = i < pipelineProgress;
@@ -159,6 +156,10 @@ export default function DashboardPage() {
           label="Privacy Screening"
           value={overview.privacy_status || "Not evaluated"}
           badge={overview.privacy_status ? (overview.privacy_status.toLowerCase().includes("pass") ? "success" : "warning") : undefined}
+        />
+        <MetricCard
+          label="Research Utility"
+          value={overview.utility_retention != null ? `${(overview.utility_retention * 100).toFixed(1)}%` : "Not evaluated"}
         />
       </div>
 

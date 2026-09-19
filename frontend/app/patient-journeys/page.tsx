@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { api, JourneyResult } from "@/lib/api";
+import { useApi } from "@/lib/swr";
+import { friendlyError } from "@/lib/errors";
+import { SkeletonCard, SkeletonTable } from "@/components/skeleton";
+import { StatusBadge } from "@/components/status-badge";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
@@ -9,47 +13,54 @@ import {
 const COLORS = ["#2F6B5F", "#4FAE8A", "#D4A843", "#C45B52", "#0F2F2C", "#66756F"];
 
 export default function PatientJourneysPage() {
-  const [patientIds, setPatientIds] = useState<string[]>([]);
+  const { data: patientsData, error: listError, isLoading } = useApi<{ patient_ids: string[] }>("/journeys", { errorRetryCount: 0 });
+  const patientIds = patientsData?.patient_ids ?? [];
+
   const [selectedId, setSelectedId] = useState("");
   const [journey, setJourney] = useState<JourneyResult | null>(null);
-  const [loading, setLoading] = useState(true);
   const [journeyLoading, setJourneyLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [journeyError, setJourneyError] = useState("");
 
+  const firstId = patientIds[0] ?? "";
   useEffect(() => {
-    let cancelled = false;
-    api.listPatients()
-      .then((d) => {
-        if (cancelled) return;
-        setPatientIds(d.patient_ids);
-        if (d.patient_ids.length > 0) {
-          setSelectedId(d.patient_ids[0]);
-        }
-      })
-      .catch((e) => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    if (firstId && !selectedId) {
+      setSelectedId(firstId);
+    }
+  }, [firstId, selectedId]);
 
   useEffect(() => {
     if (!selectedId) return;
     let cancelled = false;
     setJourneyLoading(true);
+    setJourneyError("");
     api.getJourney(selectedId)
       .then((d) => { if (!cancelled) setJourney(d); })
-      .catch((e) => { if (!cancelled) setError(e.message); })
+      .catch((e) => { if (!cancelled) setJourneyError(friendlyError(e)); })
       .finally(() => { if (!cancelled) setJourneyLoading(false); });
     return () => { cancelled = true; };
   }, [selectedId]);
 
-  if (loading) return <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}>Loading patients...</div>;
-  if (error && patientIds.length === 0) return <div style={{ padding: "2rem", textAlign: "center", color: "var(--danger)" }}>{error}</div>;
-
-  if (patientIds.length === 0) {
+  if (isLoading) {
     return (
       <div>
         <h1 className="page-title">Patient Journeys</h1>
-        <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: "3rem" }}>
+        <p className="page-subtitle">Explore individual synthetic patient trajectories over time</p>
+        <div style={{ marginTop: "1.5rem" }}><SkeletonCard lines={2} /></div>
+        <div style={{ marginTop: "1rem" }}><SkeletonCard lines={6} /></div>
+        <div style={{ marginTop: "1rem" }}><SkeletonTable rows={5} cols={6} /></div>
+      </div>
+    );
+  }
+
+  if (listError || patientIds.length === 0) {
+    return (
+      <div>
+        <h1 className="page-title">Patient Journeys</h1>
+        <p className="page-subtitle">Explore individual synthetic patient trajectories over time</p>
+        <div className="card" style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <StatusBadge label="Cohort" status="not_generated" />
+        </div>
+        <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: "3rem", marginTop: "1rem" }}>
           No cohort generated yet. Generate a cohort first to view patient journeys.
         </div>
       </div>
@@ -82,7 +93,18 @@ export default function PatientJourneysPage() {
         <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>{patientIds.length} patients available</span>
       </div>
 
-      {journeyLoading && <div style={{ textAlign: "center", color: "var(--muted)", padding: "2rem" }}>Loading journey...</div>}
+      {journeyLoading && (
+        <div style={{ marginTop: "1rem" }}>
+          <SkeletonCard lines={4} />
+          <div style={{ marginTop: "1rem" }}><SkeletonCard lines={8} /></div>
+        </div>
+      )}
+
+      {journeyError && (
+        <div className="card" style={{ borderLeft: "4px solid var(--danger)", marginTop: "1rem" }}>
+          <strong>Error:</strong> {journeyError}
+        </div>
+      )}
 
       {journey && !journeyLoading && (
         <>

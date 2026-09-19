@@ -82,6 +82,7 @@ export interface Overview {
   generated_records: number;
   fidelity_score: number | null;
   privacy_status: string | null;
+  utility_retention: number | null;
   seed: number;
   constraints: Constraint[];
 }

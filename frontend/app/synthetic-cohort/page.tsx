@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, CohortResult } from "@/lib/api";
+import { CohortResult } from "@/lib/api";
+import { useApi } from "@/lib/swr";
+import { SkeletonCard, SkeletonMetrics, SkeletonTable } from "@/components/skeleton";
+import { StatusBadge } from "@/components/status-badge";
 import {
   PieChart,
   Pie,
@@ -23,95 +25,42 @@ const PIE_COLORS = [
 ];
 
 export default function SyntheticCohortPage() {
-  const [cohort, setCohort] = useState<CohortResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: cohort, error, isLoading, mutate } = useApi<CohortResult>("/cohort/current", { errorRetryCount: 0 });
 
-  const fetchCohort = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await api.getCurrentCohort();
-      setCohort(data);
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to load cohort";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchCohort();
-  }, []);
-
-  if (loading) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "60vh",
-        }}
-      >
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              border: "3px solid var(--border)",
-              borderTopColor: "var(--primary)",
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite",
-              margin: "0 auto 1rem",
-            }}
-          />
-          <p style={{ color: "var(--muted)", fontSize: "0.875rem" }}>
-            Loading cohort data...
-          </p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !cohort) {
+  if (isLoading) {
     return (
       <div>
         <h1 className="page-title">Synthetic Cohort</h1>
-        <p className="page-subtitle">
-          Inspect the generated synthetic patient cohort
-        </p>
-        <div
-          className="card"
-          style={{ marginTop: "1.5rem", textAlign: "center", padding: "3rem 1.5rem" }}
-        >
-          <p style={{ color: "var(--danger)", marginBottom: "1rem" }}>
-            {error}
-          </p>
-          <p style={{ color: "var(--muted)", fontSize: "0.875rem", marginBottom: "1rem" }}>
-            No cohort has been generated yet. Generate one from the Cohort
-            Builder page first.
-          </p>
-          <button className="btn-primary" onClick={fetchCohort}>
-            Retry
-          </button>
-        </div>
+        <p className="page-subtitle">Inspect the generated synthetic patient cohort</p>
+        <div style={{ marginTop: "1.5rem" }}><SkeletonMetrics count={3} /></div>
+        <div style={{ marginTop: "1rem" }}><SkeletonTable rows={5} cols={4} /></div>
+        <div style={{ marginTop: "1rem" }}><SkeletonCard lines={6} /></div>
       </div>
     );
   }
 
-  if (!cohort) return null;
+  if (error || !cohort) {
+    return (
+      <div>
+        <h1 className="page-title">Synthetic Cohort</h1>
+        <p className="page-subtitle">Inspect the generated synthetic patient cohort</p>
+        <div className="card" style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <StatusBadge label="Cohort" status="not_generated" />
+        </div>
+        <div className="card" style={{ marginTop: "1rem", textAlign: "center", padding: "3rem 1.5rem" }}>
+          <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>
+            No cohort has been generated yet. Generate one from the Cohort Builder page first.
+          </p>
+          <button className="btn-primary" onClick={() => mutate()}>Retry</button>
+        </div>
+      </div>
+    );
+  }
 
   const summaryMetrics = [
     { label: "Total Patients", value: cohort.total_patients.toLocaleString() },
     { label: "Timeline Days", value: cohort.timeline_days.toLocaleString() },
-    {
-      label: "Longitudinal Records",
-      value: cohort.longitudinal_records.toLocaleString(),
-    },
+    { label: "Longitudinal Records", value: cohort.longitudinal_records.toLocaleString() },
   ];
 
   const trajectoryData = Object.entries(cohort.trajectory_distribution).map(
@@ -128,18 +77,20 @@ export default function SyntheticCohortPage() {
 
   return (
     <div>
-      <h1 className="page-title">Synthetic Cohort</h1>
-      <p className="page-subtitle">
-        Inspect the generated synthetic patient cohort
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+        <div>
+          <h1 className="page-title">Synthetic Cohort</h1>
+          <p className="page-subtitle">Inspect the generated synthetic patient cohort</p>
+        </div>
+        <StatusBadge label="Cohort" status="generated" />
+      </div>
 
-      {/* Summary Metrics */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
           gap: "1rem",
-          marginTop: "1.5rem",
+          marginTop: "1rem",
         }}
       >
         {summaryMetrics.map((m) => (
@@ -150,11 +101,8 @@ export default function SyntheticCohortPage() {
         ))}
       </div>
 
-      {/* Constraints Table */}
       <div className="card" style={{ marginTop: "1.5rem" }}>
-        <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>
-          Constraints
-        </h2>
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>Constraints</h2>
         <div className="table-container">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -199,7 +147,6 @@ export default function SyntheticCohortPage() {
         </div>
       </div>
 
-      {/* Trajectory Distribution Pie Chart */}
       {trajectoryData.length > 0 && (
         <div className="card" style={{ marginTop: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>
@@ -220,15 +167,10 @@ export default function SyntheticCohortPage() {
                   }
                 >
                   {trajectoryData.map((_, idx) => (
-                    <Cell
-                      key={idx}
-                      fill={PIE_COLORS[idx % PIE_COLORS.length]}
-                    />
+                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip
-                  formatter={(value: unknown) => Number(value).toLocaleString()}
-                />
+                <Tooltip formatter={(value: unknown) => Number(value).toLocaleString()} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -236,7 +178,6 @@ export default function SyntheticCohortPage() {
         </div>
       )}
 
-      {/* Plausibility Stats */}
       {plausibilityEntries.length > 0 && (
         <div className="card" style={{ marginTop: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>
@@ -263,7 +204,6 @@ export default function SyntheticCohortPage() {
         </div>
       )}
 
-      {/* Profile Preview */}
       {previewRows.length > 0 && (
         <div className="card" style={{ marginTop: "1.5rem" }}>
           <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>
@@ -277,9 +217,7 @@ export default function SyntheticCohortPage() {
               <thead>
                 <tr>
                   {profileColumns.map((col) => (
-                    <th key={col} style={thStyle}>
-                      {col}
-                    </th>
+                    <th key={col} style={thStyle}>{col}</th>
                   ))}
                 </tr>
               </thead>
@@ -287,9 +225,7 @@ export default function SyntheticCohortPage() {
                 {previewRows.map((row, ri) => (
                   <tr key={ri}>
                     {profileColumns.map((col) => (
-                      <td key={col} style={tdStyle}>
-                        {formatCell(row[col])}
-                      </td>
+                      <td key={col} style={tdStyle}>{formatCell(row[col])}</td>
                     ))}
                   </tr>
                 ))}
@@ -301,8 +237,6 @@ export default function SyntheticCohortPage() {
     </div>
   );
 }
-
-/* ---------- helpers ---------- */
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",

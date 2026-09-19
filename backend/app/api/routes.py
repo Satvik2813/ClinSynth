@@ -7,7 +7,7 @@ import traceback
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 
 from backend.app.schemas.models import (
@@ -406,9 +406,12 @@ def list_patients():
 # ── Validation ────────────────────────────────────────────────────────────
 
 @router.get("/validation")
-def get_validation():
+def get_validation(recompute: bool = Query(False)):
     if not state.cohort_generated:
         raise HTTPException(404, "No cohort generated")
+
+    if recompute:
+        state.fidelity_summary = None
 
     if state.fidelity_summary is None:
         orig_profiles = state.profiles_processed
@@ -440,9 +443,12 @@ def get_validation():
 # ── Privacy ───────────────────────────────────────────────────────────────
 
 @router.get("/privacy")
-def get_privacy():
+def get_privacy(recompute: bool = Query(False)):
     if not state.cohort_generated:
         raise HTTPException(404, "No cohort generated")
+
+    if recompute:
+        state.privacy_results = None
 
     if state.privacy_results is None:
         orig = state.profiles_processed
@@ -799,6 +805,8 @@ def get_overview():
     fid_score = fid["overall_fidelity"] if fid else None
     priv = state.privacy_results
     priv_status = priv["overall_status"] if priv else None
+    util = state.utility_results
+    util_retention = util.get("utility_retention") if util else None
 
     return {
         "data_loaded": state.data_loaded,
@@ -811,6 +819,7 @@ def get_overview():
         "generated_records": n_synth_long,
         "fidelity_score": fid_score,
         "privacy_status": priv_status,
+        "utility_retention": util_retention,
         "seed": state.current_seed,
         "constraints": state.cohort_stats.get("constraints", []) if state.cohort_stats else [],
     }

@@ -1,50 +1,49 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { api, DataSummary } from "@/lib/api";
+import { useApi } from "@/lib/swr";
+import { friendlyError } from "@/lib/errors";
+import { SkeletonMetrics, SkeletonCard, SkeletonTable } from "@/components/skeleton";
+import { StatusBadge } from "@/components/status-badge";
+import { toast } from "sonner";
+import { useSWRConfig } from "swr";
 
 export default function DataPage() {
-  const [summary, setSummary] = useState<DataSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [noData, setNoData] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data: summary, error, isLoading, mutate } = useApi<DataSummary>("/data/summary", {
+    errorRetryCount: 0,
+  });
+  const { mutate: globalMutate } = useSWRConfig();
   const [demoLoading, setDemoLoading] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [lastAction, setLastAction] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchSummary = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setNoData(false);
-      const data = await api.getDataSummary();
-      setSummary(data);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load data summary";
-      if (message.includes("404") || message.toLowerCase().includes("no data") || message.toLowerCase().includes("not found")) {
-        setNoData(true);
-      } else {
-        setError(message);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSummary();
-  }, []);
+  const noData = error && (
+    String(error).includes("404") ||
+    String(error).toLowerCase().includes("no data") ||
+    String(error).toLowerCase().includes("not found")
+  );
 
   const handleLoadDemo = async () => {
+    const toastId = toast.loading("Loading demo dataset...");
     try {
       setDemoLoading(true);
-      setError(null);
       const data = await api.loadDemo();
-      setSummary(data);
-      setNoData(false);
+      toast.success("Demo dataset loaded successfully", {
+        id: toastId,
+        description: `${data.n_patients} patients and ${data.n_longitudinal_records.toLocaleString()} longitudinal records are ready.`,
+      });
+      setLastAction("Demo dataset loaded");
+      mutate(data, false);
+      globalMutate("/overview");
+      globalMutate("/train/status");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load demo data");
+      toast.error("Dataset loading failed", {
+        id: toastId,
+        description: friendlyError(err),
+      });
     } finally {
       setDemoLoading(false);
     }
@@ -52,17 +51,40 @@ export default function DataPage() {
 
   const handleUpload = async (file: File) => {
     if (!file.name.endsWith(".csv")) {
-      setError("Please upload a CSV file.");
+      toast.error("Please upload a CSV file.");
       return;
     }
+    const toastId = toast.loading("Uploading dataset...");
     try {
       setUploadLoading(true);
-      setError(null);
       const data = await api.uploadCsv(file);
-      setSummary(data);
-      setNoData(false);
+      const dtype = data.n_patients > 0 && data.n_longitudinal_records === 0
+        ? "Profile"
+        : data.n_patients === 0 && data.n_longitudinal_records > 0
+          ? "Longitudinal"
+          : "Combined";
+
+      if (data.warning) {
+        toast.warning(`${dtype} dataset loaded`, {
+          id: toastId,
+          description: data.warning,
+          duration: 6000,
+        });
+      } else {
+        toast.success("Dataset uploaded successfully", {
+          id: toastId,
+          description: `${dtype} dataset loaded`,
+        });
+      }
+      setLastAction(`${dtype} dataset uploaded`);
+      mutate(data, false);
+      globalMutate("/overview");
+      globalMutate("/train/status");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      toast.error("Dataset upload failed", {
+        id: toastId,
+        description: friendlyError(err),
+      });
     } finally {
       setUploadLoading(false);
     }
@@ -81,45 +103,41 @@ export default function DataPage() {
     if (file) handleUpload(file);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 40, height: 40, border: "3px solid var(--border)", borderTopColor: "var(--primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 1rem" }} />
-          <p style={{ color: "var(--muted)", fontSize: "0.875rem" }}>Loading data summary...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
+      <div>
+        <h1 className="page-title">Data</h1>
+        <p className="page-subtitle">Dataset summary and exploration</p>
+        <div style={{ marginTop: "1.5rem" }}><SkeletonMetrics count={4} /></div>
+        <div style={{ marginTop: "1rem" }}><SkeletonCard lines={4} /></div>
+        <div style={{ marginTop: "1rem" }}><SkeletonTable rows={5} cols={4} /></div>
       </div>
     );
   }
 
-  // No data loaded state -- show upload / demo options
   if (noData || (!summary && !error)) {
     return (
       <div>
         <h1 className="page-title">Data</h1>
         <p className="page-subtitle">Load or upload a patient dataset</p>
 
-        {error && (
-          <div className="card" style={{ marginTop: "1rem", background: "var(--danger-light)", borderColor: "var(--danger)" }}>
-            <p style={{ color: "#991b1b", fontSize: "0.875rem", margin: 0 }}>{error}</p>
-          </div>
-        )}
+        <div className="card" style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <StatusBadge label="Dataset" status="not_ready" />
+        </div>
 
         <div style={{ marginTop: "1.5rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem" }}>
-          {/* Demo Card */}
           <div className="card" style={{ textAlign: "center", padding: "2.5rem 1.5rem" }}>
             <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--primary)", marginBottom: "1rem" }}>DEMO</div>
             <h3 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.5rem" }}>Demo Dataset</h3>
             <p style={{ color: "var(--muted)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
               Load a sample synthetic patient dataset to explore ClinSynth features.
             </p>
-            <button className="btn-primary" onClick={handleLoadDemo} disabled={demoLoading}>
-              {demoLoading ? "Loading..." : "Load Demo Dataset"}
+            <button className="btn-primary" onClick={handleLoadDemo} disabled={demoLoading} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+              {demoLoading && <span className="spinner" />}
+              {demoLoading ? "Loading Dataset..." : "Load Demo Dataset"}
             </button>
           </div>
 
-          {/* Upload Card */}
           <div
             className="card"
             style={{
@@ -139,7 +157,8 @@ export default function DataPage() {
               Drag and drop a CSV file here, or click to browse.
             </p>
             <input ref={fileInputRef} type="file" accept=".csv" onChange={onFileChange} style={{ display: "none" }} />
-            <button className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={uploadLoading}>
+            <button className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={uploadLoading} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+              {uploadLoading && <span className="spinner" />}
               {uploadLoading ? "Uploading..." : "Choose File"}
             </button>
           </div>
@@ -154,8 +173,8 @@ export default function DataPage() {
         <h1 className="page-title">Data</h1>
         <p className="page-subtitle">Load or upload a patient dataset</p>
         <div className="card" style={{ marginTop: "1.5rem", textAlign: "center", padding: "3rem 1.5rem" }}>
-          <p style={{ color: "var(--danger)", marginBottom: "1rem" }}>{error}</p>
-          <button className="btn-primary" onClick={fetchSummary}>Retry</button>
+          <p style={{ color: "var(--danger)", marginBottom: "1rem" }}>{friendlyError(error)}</p>
+          <button className="btn-primary" onClick={() => mutate()}>Retry</button>
         </div>
       </div>
     );
@@ -163,7 +182,6 @@ export default function DataPage() {
 
   if (!summary) return null;
 
-  // Compute missing-data entries
   const missingEntries = [
     ...Object.entries(summary.profile_missing || {}).map(([col, pct]) => ({ column: col, pct, source: "Profile" })),
     ...Object.entries(summary.longitudinal_missing || {}).map(([col, pct]) => ({ column: col, pct, source: "Longitudinal" })),
@@ -180,21 +198,30 @@ export default function DataPage() {
           <p className="page-subtitle">Dataset summary and exploration</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button className="btn-secondary" onClick={handleLoadDemo} disabled={demoLoading}>
+          <button className="btn-secondary" onClick={handleLoadDemo} disabled={demoLoading} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            {demoLoading && <span className="spinner" />}
             {demoLoading ? "Loading..." : "Load Demo Dataset"}
           </button>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={onFileChange} style={{ display: "none" }} />
-          <button className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={uploadLoading}>
+          <button className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={uploadLoading} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            {uploadLoading && <span className="spinner" />}
             {uploadLoading ? "Uploading..." : "Upload CSV"}
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="card" style={{ marginBottom: "1rem", background: "var(--danger-light)", borderColor: "var(--danger)" }}>
-          <p style={{ color: "#991b1b", fontSize: "0.875rem", margin: 0 }}>{error}</p>
-        </div>
-      )}
+      {/* Dataset Status Badge */}
+      <div className="card" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+        <StatusBadge label="Dataset" status="ready" />
+        <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
+          {summary.n_patients.toLocaleString()} patients, {summary.n_longitudinal_records.toLocaleString()} longitudinal records
+        </span>
+        {lastAction && (
+          <span style={{ fontSize: "0.8125rem", color: "var(--muted)", marginLeft: "auto" }}>
+            Last action: {lastAction}
+          </span>
+        )}
+      </div>
 
       {summary.warning && (
         <div className="card" style={{ marginBottom: "1rem", background: "var(--warning-light)", borderColor: "var(--warning)" }}>
@@ -202,7 +229,6 @@ export default function DataPage() {
         </div>
       )}
 
-      {/* Overview metrics */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
         <div className="card">
           <p className="metric-value">{summary.n_patients.toLocaleString()}</p>
@@ -222,7 +248,6 @@ export default function DataPage() {
         </div>
       </div>
 
-      {/* Columns lists */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
         <div className="card">
           <h2 style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
@@ -246,7 +271,6 @@ export default function DataPage() {
         </div>
       </div>
 
-      {/* Profile Stats Table */}
       {summary.profile_stats && Object.keys(summary.profile_stats).length > 0 && (
         <div className="card" style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "1rem" }}>
@@ -281,7 +305,6 @@ export default function DataPage() {
         </div>
       )}
 
-      {/* Data Preview */}
       {previewRows.length > 0 && (
         <div className="card" style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "1rem" }}>
@@ -312,7 +335,6 @@ export default function DataPage() {
         </div>
       )}
 
-      {/* Missing Data */}
       {missingEntries.length > 0 && (
         <div className="card">
           <h2 style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "1rem" }}>
@@ -341,7 +363,7 @@ export default function DataPage() {
                         {(entry.pct * 100).toFixed(1)}%
                       </td>
                       <td>
-                        <div style={{ background: "var(--muted-bg)", borderRadius: "4px", height: "0.5rem", overflow: "hidden" }}>
+                        <div style={{ background: "var(--mint)", borderRadius: "4px", height: "0.5rem", overflow: "hidden" }}>
                           <div
                             style={{
                               width: `${Math.min(entry.pct * 100, 100)}%`,

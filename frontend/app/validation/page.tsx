@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   BarChart,
   Bar,
@@ -11,27 +11,56 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { api, ValidationResult } from "@/lib/api";
+import { ValidationResult } from "@/lib/api";
+import { useApi } from "@/lib/swr";
+import { friendlyError } from "@/lib/errors";
+import { SkeletonCard, SkeletonTable } from "@/components/skeleton";
+import { StatusBadge } from "@/components/status-badge";
+import { toast } from "sonner";
+import { useSWRConfig } from "swr";
 
 export default function ValidationPage() {
-  const [data, setData] = useState<ValidationResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading, mutate } = useApi<ValidationResult>("/validation", { errorRetryCount: 0 });
+  const { mutate: globalMutate } = useSWRConfig();
+  const [running, setRunning] = useState(false);
 
-  useEffect(() => {
-    api
-      .getValidation()
-      .then(setData)
-      .catch((err) =>
-        setError(err.message || "Validation data not ready. Generate a cohort first.")
-      )
-      .finally(() => setLoading(false));
-  }, []);
+  const handleRunValidation = async () => {
+    const toastId = toast.loading("Running fidelity validation...");
+    setRunning(true);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+      const res = await fetch(`${API_BASE}/validation?recompute=true`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(body.detail || `Validation failed: ${res.status}`);
+      }
+      const freshData: ValidationResult = await res.json();
+      mutate(freshData, false);
+      const fidelity = freshData.fidelity_summary?.overall_fidelity;
+      toast.success("Validation completed", {
+        id: toastId,
+        description: fidelity != null ? `Overall fidelity: ${(fidelity * 100).toFixed(1)}%` : undefined,
+      });
+      globalMutate("/overview");
+      globalMutate("/research/readiness");
+    } catch (err: unknown) {
+      toast.error("Validation failed", {
+        id: toastId,
+        description: friendlyError(err),
+      });
+    } finally {
+      setRunning(false);
+    }
+  };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div style={{ textAlign: "center", padding: "2rem", color: "var(--muted)" }}>
-        <p>Loading validation results...</p>
+      <div>
+        <h1 className="page-title">Validation Report</h1>
+        <p className="page-subtitle">Statistical fidelity analysis of synthetic data</p>
+        <div style={{ marginTop: "1.5rem" }}><SkeletonCard lines={4} /></div>
+        <div style={{ marginTop: "1rem" }}><SkeletonTable rows={6} cols={4} /></div>
+        <div style={{ marginTop: "1rem" }}><SkeletonCard lines={8} /></div>
       </div>
     );
   }
@@ -39,11 +68,19 @@ export default function ValidationPage() {
   if (error || !data) {
     return (
       <div>
-        <h1 className="page-title">Validation</h1>
-        <div className="card" style={{ maxWidth: 480, margin: "2rem auto", padding: "2rem", textAlign: "center" }}>
-          <p style={{ color: "var(--danger)" }}>
-            {error || "Validation data not available. Generate a cohort and run validation first."}
+        <h1 className="page-title">Validation Report</h1>
+        <p className="page-subtitle">Statistical fidelity analysis of synthetic data</p>
+        <div className="card" style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <StatusBadge label="Validation" status="not_evaluated" />
+        </div>
+        <div className="card" style={{ maxWidth: 480, margin: "1rem auto", padding: "2rem", textAlign: "center" }}>
+          <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>
+            {error ? friendlyError(error) : "Validation data not available. Generate a cohort first."}
           </p>
+          <button className="btn-primary" onClick={handleRunValidation} disabled={running} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            {running && <span className="spinner" />}
+            {running ? "Validating..." : "Run Validation"}
+          </button>
         </div>
       </div>
     );
@@ -98,12 +135,20 @@ export default function ValidationPage() {
 
   return (
     <div>
-      <h1 className="page-title">Validation Report</h1>
-      <p className="page-subtitle">
-        Statistical fidelity analysis of synthetic data against the original dataset
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+        <div>
+          <h1 className="page-title">Validation Report</h1>
+          <p className="page-subtitle">Statistical fidelity analysis of synthetic data against the original dataset</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <button className="btn-secondary" onClick={handleRunValidation} disabled={running} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            {running && <span className="spinner" />}
+            {running ? "Validating..." : "Re-run Validation"}
+          </button>
+          <StatusBadge label="Validation" status="evaluated" />
+        </div>
+      </div>
 
-      {/* Fidelity Summary */}
       <div className="card" style={{ marginBottom: "1.5rem", padding: "1.5rem" }}>
         <h2 style={{ marginTop: 0 }}>Overall Fidelity</h2>
         <div style={{ textAlign: "center", margin: "1rem 0" }}>
@@ -114,15 +159,7 @@ export default function ValidationPage() {
             {fidelity_summary.interpretation}
           </div>
         </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: "2rem",
-            marginTop: "1rem",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "center", gap: "2rem", marginTop: "1rem", flexWrap: "wrap" }}>
           <div style={{ textAlign: "center" }}>
             <span className="metric-label">Formula</span>
             <div style={{ fontFamily: "monospace", fontSize: "0.85rem", marginTop: "0.25rem" }}>
@@ -136,7 +173,6 @@ export default function ValidationPage() {
         </div>
       </div>
 
-      {/* Per-Column Quality Table */}
       <div className="card" style={{ marginBottom: "1.5rem", padding: "1.5rem" }}>
         <h2 style={{ marginTop: 0 }}>Per-Column Quality</h2>
         <div className="table-container">
@@ -171,7 +207,6 @@ export default function ValidationPage() {
         </div>
       </div>
 
-      {/* Per-Column Quality Chart */}
       <div className="card" style={{ marginBottom: "1.5rem", padding: "1.5rem" }}>
         <h2 style={{ marginTop: 0 }}>Column Quality Scores</h2>
         <p className="metric-label" style={{ marginBottom: "1rem" }}>
@@ -181,12 +216,7 @@ export default function ValidationPage() {
           <BarChart data={chartData} layout="vertical" margin={{ left: 120, right: 20, top: 10, bottom: 10 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis type="number" domain={[0, 1]} tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`} />
-            <YAxis
-              type="category"
-              dataKey="column"
-              width={110}
-              tick={{ fontSize: 12 }}
-            />
+            <YAxis type="category" dataKey="column" width={110} tick={{ fontSize: 12 }} />
             <Tooltip formatter={(value: unknown) => `${(Number(value) * 100).toFixed(1)}%`} />
             <Bar dataKey="score" name="Quality Score">
               {chartData.map((entry, idx) => (
@@ -197,7 +227,6 @@ export default function ValidationPage() {
         </ResponsiveContainer>
       </div>
 
-      {/* Subgroup Fidelity */}
       {subgroup_fidelity.length > 0 && (
         <div className="card" style={{ padding: "1.5rem" }}>
           <h2 style={{ marginTop: 0 }}>Subgroup Fidelity</h2>

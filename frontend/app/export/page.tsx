@@ -1,13 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { toast } from "sonner";
+import { friendlyError } from "@/lib/errors";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 interface ExportOption {
   key: string;
   label: string;
   description: string;
   format: string;
+  filename: string;
 }
 
 const EXPORT_OPTIONS: ExportOption[] = [
@@ -16,47 +20,86 @@ const EXPORT_OPTIONS: ExportOption[] = [
     label: "Profiles CSV",
     description: "Patient demographic and baseline profiles in comma-separated format. One row per patient with columns for age, gender, BMI, conditions, and trajectory type.",
     format: "CSV",
+    filename: "profiles.csv",
   },
   {
     key: "longitudinal_csv",
     label: "Longitudinal CSV",
     description: "Time-series clinical records in comma-separated format. Multiple rows per patient with timestamped lab values, vitals, and clinical measurements.",
     format: "CSV",
+    filename: "longitudinal.csv",
   },
   {
     key: "profiles_json",
     label: "Profiles JSON",
     description: "Patient demographic and baseline profiles in JSON format. Suitable for programmatic access and integration with APIs or data pipelines.",
     format: "JSON",
+    filename: "profiles.json",
   },
   {
     key: "longitudinal_json",
     label: "Longitudinal JSON",
     description: "Time-series clinical records in JSON format. Nested structure with patient journeys organized by patient ID for easy traversal.",
     format: "JSON",
+    filename: "longitudinal.json",
   },
   {
     key: "quality_report",
     label: "Quality Report",
     description: "Plain-text fidelity and privacy evaluation report. Includes distribution comparisons, correlation preservation metrics, and privacy check results.",
     format: "TXT",
+    filename: "quality_report.json",
   },
   {
     key: "zip",
     label: "Full ZIP",
     description: "Complete export bundle containing all CSV and JSON files plus the quality report. Best option for archiving or sharing a full experiment snapshot.",
     format: "ZIP",
+    filename: "clinsynth_export.zip",
   },
 ];
+
+function extractFilename(response: Response, fallback: string): string {
+  const disposition = response.headers.get("Content-Disposition");
+  if (disposition) {
+    const match = disposition.match(/filename="?([^";\n]+)"?/);
+    if (match?.[1]) return match[1];
+  }
+  return fallback;
+}
 
 export default function ExportPage() {
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  const handleDownload = (key: string) => {
-    setDownloading(key);
-    // The download is handled by the browser via the <a> tag,
-    // so we just briefly show the downloading state.
-    setTimeout(() => setDownloading(null), 2000);
+  const handleDownload = async (opt: ExportOption) => {
+    const isZip = opt.key === "zip";
+    const toastId = toast.loading(isZip ? "Preparing research bundle..." : "Preparing export...");
+    setDownloading(opt.key);
+    try {
+      const res = await fetch(`${API_BASE}/export/${opt.key}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(body.detail || `Export failed: ${res.status}`);
+      }
+      const blob = await res.blob();
+      const filename = extractFilename(res, opt.filename);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Download started", { id: toastId });
+    } catch (err: unknown) {
+      toast.error("Export failed", {
+        id: toastId,
+        description: friendlyError(err),
+      });
+    } finally {
+      setDownloading(null);
+    }
   };
 
   return (
@@ -86,15 +129,15 @@ export default function ExportPage() {
                 {opt.description}
               </p>
             </div>
-            <a
-              href={api.getExportUrl(opt.key)}
-              download
+            <button
               className="btn-secondary"
-              onClick={() => handleDownload(opt.key)}
-              style={{ textAlign: "center", textDecoration: "none", display: "block" }}
+              onClick={() => handleDownload(opt)}
+              disabled={downloading === opt.key}
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
             >
-              {downloading === opt.key ? "Downloading..." : `Download ${opt.format}`}
-            </a>
+              {downloading === opt.key && <span className="spinner" />}
+              {downloading === opt.key ? "Preparing..." : `Download ${opt.format}`}
+            </button>
           </div>
         ))}
       </div>

@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, ResearchReadiness, ReadinessMetric } from "@/lib/api";
+import { useState } from "react";
+import { ResearchReadiness, ReadinessMetric, api } from "@/lib/api";
+import { useApi } from "@/lib/swr";
+import { friendlyError } from "@/lib/errors";
+import { SkeletonCard } from "@/components/skeleton";
+import { StatusBadge } from "@/components/status-badge";
+import { toast } from "sonner";
+import { useSWRConfig } from "swr";
 
-function StatusBadge({ status }: { status: string }) {
+function ReadinessBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
   let cls = "badge badge-warning";
   if (s.includes("pass") || s.includes("good") || s.includes("high") || s.includes("ready")) {
@@ -29,7 +35,7 @@ function MetricPanel({
     <div className="card" style={{ marginBottom: "1rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
         <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, color: "var(--foreground)", margin: 0 }}>{title}</h3>
-        <StatusBadge status={metric.status} />
+        <ReadinessBadge status={metric.status} />
       </div>
       {metric.value != null && (
         <p className="metric-value" style={{ marginBottom: "0.25rem" }}>
@@ -45,27 +51,43 @@ function MetricPanel({
 }
 
 export default function ResearchReadinessPage() {
-  const [data, setData] = useState<ResearchReadiness | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, isLoading, mutate } = useApi<ResearchReadiness>("/research/readiness", { errorRetryCount: 0 });
+  const { mutate: globalMutate } = useSWRConfig();
+  const [utilityTarget, setUtilityTarget] = useState("diabetes");
+  const [utilityModel, setUtilityModel] = useState("logistic_regression");
+  const [runningUtility, setRunningUtility] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const result = await api.getResearchReadiness();
-        setData(result);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to load readiness data");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const handleRunUtility = async () => {
+    const toastId = toast.loading("Running research utility validation...");
+    setRunningUtility(true);
+    try {
+      const result = await api.getResearchUtility({ target: utilityTarget, model_type: utilityModel });
+      const retention = result.utility_retention;
+      toast.success("Research utility analysis completed", {
+        id: toastId,
+        description: retention != null ? `Utility retention: ${(retention * 100).toFixed(1)}%` : undefined,
+      });
+      mutate();
+      globalMutate("/overview");
+    } catch (err: unknown) {
+      toast.error("Research utility analysis failed", {
+        id: toastId,
+        description: friendlyError(err),
+      });
+    } finally {
+      setRunningUtility(false);
+    }
+  };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "40vh" }}>
-        <p style={{ color: "var(--muted)" }}>Loading research readiness...</p>
+      <div>
+        <h1 className="page-title">Research Readiness</h1>
+        <p className="page-subtitle">Aggregate assessment of synthetic cohort quality</p>
+        <div style={{ marginTop: "1.5rem" }}><SkeletonCard lines={2} /></div>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} style={{ marginTop: "1rem" }}><SkeletonCard lines={4} /></div>
+        ))}
       </div>
     );
   }
@@ -75,8 +97,12 @@ export default function ResearchReadinessPage() {
       <div>
         <h1 className="page-title">Research Readiness</h1>
         <p className="page-subtitle">Aggregate assessment of synthetic cohort quality</p>
-        <div className="card" style={{ marginTop: "1.5rem", textAlign: "center", padding: "2rem" }}>
-          <p style={{ color: "var(--danger)" }}>{error || "No data available. Generate a cohort first."}</p>
+        <div className="card" style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <StatusBadge label="Readiness" status="not_evaluated" />
+        </div>
+        <div className="card" style={{ marginTop: "1rem", textAlign: "center", padding: "2rem" }}>
+          <p style={{ color: "var(--muted)", marginBottom: "1rem" }}>{error ? friendlyError(error) : "No data available. Generate a cohort first."}</p>
+          <button className="btn-primary" onClick={() => mutate()}>Retry</button>
         </div>
       </div>
     );
@@ -97,12 +123,14 @@ export default function ResearchReadinessPage() {
 
   return (
     <div>
-      <h1 className="page-title">Research Readiness</h1>
-      <p className="page-subtitle">
-        Five independent assessments determine whether a synthetic cohort is suitable for downstream research.
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+        <div>
+          <h1 className="page-title">Research Readiness</h1>
+          <p className="page-subtitle">Five independent assessments determine whether a synthetic cohort is suitable for downstream research.</p>
+        </div>
+        <StatusBadge label="Readiness" status={passCount >= 4 ? "ready" : "not_ready"} />
+      </div>
 
-      {/* Summary bar */}
       <div className="mint-card" style={{ marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
           <p style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--primary-dark)", margin: 0 }}>
@@ -114,7 +142,6 @@ export default function ResearchReadinessPage() {
         </div>
       </div>
 
-      {/* Metric panels */}
       <MetricPanel title="Statistical Fidelity" metric={data.statistical_fidelity}>
         <p style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
           Measures KS similarity, total variation distance, and correlation preservation between real and synthetic distributions.
@@ -149,6 +176,30 @@ export default function ResearchReadinessPage() {
             Target: {data.research_utility.target}
           </p>
         )}
+        <div style={{ marginTop: "0.75rem", padding: "0.75rem", background: "var(--mint)", borderRadius: "0.5rem" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: "0.75rem", flexWrap: "wrap" }}>
+            <div>
+              <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Target Variable</label>
+              <select className="select-field" value={utilityTarget} onChange={(e) => setUtilityTarget(e.target.value)} disabled={runningUtility} style={{ minWidth: 140 }}>
+                <option value="diabetes">Diabetes</option>
+                <option value="hypertension">Hypertension</option>
+                <option value="gender">Gender</option>
+              </select>
+            </div>
+            <div>
+              <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Model Type</label>
+              <select className="select-field" value={utilityModel} onChange={(e) => setUtilityModel(e.target.value)} disabled={runningUtility} style={{ minWidth: 160 }}>
+                <option value="logistic_regression">Logistic Regression</option>
+                <option value="random_forest">Random Forest</option>
+                <option value="gradient_boosting">Gradient Boosting</option>
+              </select>
+            </div>
+            <button className="btn-primary" onClick={handleRunUtility} disabled={runningUtility} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+              {runningUtility && <span className="spinner" />}
+              {runningUtility ? "Running..." : "Run Utility Analysis"}
+            </button>
+          </div>
+        </div>
       </MetricPanel>
 
       <MetricPanel title="Subgroup Preservation" metric={data.subgroup_preservation}>
@@ -186,7 +237,6 @@ export default function ResearchReadinessPage() {
         )}
       </MetricPanel>
 
-      {/* Rare cohort amplification */}
       {data.rare_cohort_coverage && data.rare_cohort_coverage.length > 0 && (
         <div className="card">
           <h2 className="section-title">Rare Cohort Amplification</h2>

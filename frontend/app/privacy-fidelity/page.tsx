@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { api, PrivacyFidelityEntry } from "@/lib/api";
+import { friendlyError } from "@/lib/errors";
+import { toast } from "sonner";
 import {
   ScatterChart,
   Scatter,
@@ -22,16 +24,22 @@ const COLORS = ["#2F6B5F", "#4FAE8A", "#D4A843", "#0F2F2C", "#C45B52", "#66756F"
 export default function PrivacyFidelityPage() {
   const [results, setResults] = useState<PrivacyFidelityEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const runComparison = async () => {
+    const toastId = toast.loading("Running privacy vs fidelity comparison...");
     setLoading(true);
-    setError(null);
     try {
       const data = await api.comparePrivacy();
       setResults(data.results);
+      toast.success("Privacy-fidelity comparison complete", {
+        id: toastId,
+        description: `${data.results.length} privacy modes compared`,
+      });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Comparison failed");
+      toast.error("Privacy-fidelity comparison failed", {
+        id: toastId,
+        description: friendlyError(err),
+      });
     } finally {
       setLoading(false);
     }
@@ -45,20 +53,14 @@ export default function PrivacyFidelityPage() {
       </p>
 
       <div className="card" style={{ marginBottom: "1.5rem" }}>
-        <button className="btn-primary" onClick={runComparison} disabled={loading}>
+        <button className="btn-primary" onClick={runComparison} disabled={loading} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+          {loading && <span className="spinner" />}
           {loading ? "Running Comparison..." : "Run Comparison"}
         </button>
       </div>
 
-      {error && (
-        <div className="card" style={{ borderLeft: "4px solid var(--danger)", color: "var(--danger)" }}>
-          {error}
-        </div>
-      )}
-
       {results.length > 0 && (
         <>
-          {/* Results Table */}
           <div className="card">
             <h2 style={{ marginBottom: "1rem" }}>Comparison Results</h2>
             <div className="table-container">
@@ -78,15 +80,9 @@ export default function PrivacyFidelityPage() {
                 <tbody>
                   {results.map((r) => (
                     <tr key={r.mode}>
-                      <td>
-                        <span className="badge badge-info">{r.mode}</span>
-                      </td>
-                      <td className="metric-value">
-                        {r.fidelity_score.toFixed(4)}
-                      </td>
-                      <td className="metric-value">
-                        {r.median_nn_distance.toFixed(4)}
-                      </td>
+                      <td><span className="badge badge-info">{r.mode}</span></td>
+                      <td className="metric-value">{r.fidelity_score.toFixed(4)}</td>
+                      <td className="metric-value">{r.median_nn_distance.toFixed(4)}</td>
                       <td>
                         <span className={r.exact_duplicates === 0 ? "badge badge-success" : "badge badge-warning"}>
                           {r.exact_duplicates}
@@ -113,7 +109,6 @@ export default function PrivacyFidelityPage() {
             </div>
           </div>
 
-          {/* Scatter Chart: Fidelity vs Privacy */}
           <div className="card" style={{ marginTop: "1.5rem" }}>
             <h2 style={{ marginBottom: "1rem" }}>Fidelity vs Privacy (Nearest-Neighbor Distance)</h2>
             <p className="metric-label" style={{ marginBottom: "1rem" }}>
@@ -122,18 +117,10 @@ export default function PrivacyFidelityPage() {
             <ResponsiveContainer width="100%" height={400}>
               <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  type="number"
-                  dataKey="fidelity_score"
-                  name="Fidelity Score"
-                  label={{ value: "Fidelity Score", position: "insideBottom", offset: -5 }}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="median_nn_distance"
-                  name="Median NN Distance"
-                  label={{ value: "Median NN Distance", angle: -90, position: "insideLeft" }}
-                />
+                <XAxis type="number" dataKey="fidelity_score" name="Fidelity Score"
+                  label={{ value: "Fidelity Score", position: "insideBottom", offset: -5 }} />
+                <YAxis type="number" dataKey="median_nn_distance" name="Median NN Distance"
+                  label={{ value: "Median NN Distance", angle: -90, position: "insideLeft" }} />
                 <Tooltip
                   formatter={(value: unknown) => Number(value).toFixed(4)}
                   labelFormatter={() => ""}
@@ -159,7 +146,6 @@ export default function PrivacyFidelityPage() {
             </ResponsiveContainer>
           </div>
 
-          {/* Bar Chart: Fidelity Scores */}
           <div className="card" style={{ marginTop: "1.5rem" }}>
             <h2 style={{ marginBottom: "1rem" }}>Fidelity Scores by Privacy Mode</h2>
             <ResponsiveContainer width="100%" height={350}>
@@ -178,7 +164,6 @@ export default function PrivacyFidelityPage() {
             </ResponsiveContainer>
           </div>
 
-          {/* Interpretation */}
           <div className="card" style={{ marginTop: "1.5rem" }}>
             <h2 style={{ marginBottom: "0.5rem" }}>Interpretation</h2>
             <p style={{ lineHeight: 1.7 }}>

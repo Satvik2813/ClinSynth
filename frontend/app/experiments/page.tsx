@@ -1,42 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, Experiment } from "@/lib/api";
+import { useApi } from "@/lib/swr";
+import { friendlyError } from "@/lib/errors";
+import { SkeletonTable } from "@/components/skeleton";
+import { toast } from "sonner";
 
 export default function ExperimentsPage() {
-  const [experiments, setExperiments] = useState<Experiment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: expData, error, isLoading, mutate } = useApi<{ experiments: Experiment[] }>("/experiments", { errorRetryCount: 0 });
+  const experiments = expData?.experiments ?? [];
+
   const [saving, setSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const fetchExperiments = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await api.getExperiments();
-      setExperiments(data.experiments);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load experiments";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchExperiments();
-  }, []);
-
   const handleSave = async () => {
+    const toastId = toast.loading("Saving current experiment...");
+    setSaving(true);
     try {
-      setSaving(true);
-      setError(null);
-      await api.saveExperiment();
-      await fetchExperiments();
+      const saved = await api.saveExperiment();
+      toast.success("Experiment saved successfully", {
+        id: toastId,
+        description: `Experiment ID: ${saved.experiment_id}`,
+      });
+      mutate();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to save experiment";
-      setError(message);
+      toast.error("Failed to save experiment", {
+        id: toastId,
+        description: friendlyError(err),
+      });
     } finally {
       setSaving(false);
     }
@@ -46,6 +38,16 @@ export default function ExperimentsPage() {
     setExpandedId(expandedId === id ? null : id);
   };
 
+  if (isLoading) {
+    return (
+      <div>
+        <h1 className="page-title">Experiments</h1>
+        <p className="page-subtitle">Track and compare cohort generation runs</p>
+        <div style={{ marginTop: "1.5rem" }}><SkeletonTable rows={5} cols={8} /></div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
@@ -53,24 +55,21 @@ export default function ExperimentsPage() {
           <h1 className="page-title">Experiments</h1>
           <p className="page-subtitle">Track and compare cohort generation runs</p>
         </div>
-        <button className="btn-primary" onClick={handleSave} disabled={saving}>
+        <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+          {saving && <span className="spinner" />}
           {saving ? "Saving..." : "Save Current Experiment"}
         </button>
       </div>
 
       {error && (
         <div className="card" style={{ borderLeft: "4px solid var(--danger)", marginBottom: "1rem" }}>
-          <p style={{ color: "var(--danger)", margin: 0 }}>{error}</p>
+          <p style={{ color: "var(--danger)", margin: 0 }}>{friendlyError(error)}</p>
         </div>
       )}
 
-      {loading ? (
+      {experiments.length === 0 ? (
         <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-          <p>Loading experiments...</p>
-        </div>
-      ) : experiments.length === 0 ? (
-        <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-          <p style={{ margin: 0 }}>No experiments saved yet. Generate a cohort and save it as an experiment.</p>
+          <p style={{ margin: 0, color: "var(--muted)" }}>No experiments saved yet. Generate a cohort and save it as an experiment.</p>
         </div>
       ) : (
         <div className="table-container">
@@ -90,9 +89,8 @@ export default function ExperimentsPage() {
             </thead>
             <tbody>
               {experiments.map((exp) => (
-                <>
+                <tbody key={exp.experiment_id}>
                   <tr
-                    key={exp.experiment_id}
                     onClick={() => toggleExpand(exp.experiment_id)}
                     style={{ cursor: "pointer" }}
                   >
@@ -100,22 +98,14 @@ export default function ExperimentsPage() {
                       {exp.experiment_id.slice(0, 8)}...
                     </td>
                     <td>{new Date(exp.timestamp).toLocaleString()}</td>
-                    <td>
-                      <span className="badge badge-info">{exp.model}</span>
-                    </td>
+                    <td><span className="badge badge-info">{exp.model}</span></td>
                     <td style={{ textAlign: "right" }}>{exp.num_patients}</td>
                     <td style={{ textAlign: "right" }}>{exp.timeline_days}</td>
-                    <td>
-                      <span className="badge badge-warning">{exp.privacy_mode}</span>
-                    </td>
-                    <td style={{ textAlign: "right", fontFamily: "var(--font-geist-mono, monospace)" }}>
-                      {exp.seed}
-                    </td>
+                    <td><span className="badge badge-warning">{exp.privacy_mode}</span></td>
+                    <td style={{ textAlign: "right", fontFamily: "var(--font-geist-mono, monospace)" }}>{exp.seed}</td>
                     <td style={{ textAlign: "right" }}>
                       {exp.fidelity_summary ? (
-                        <span style={{ fontWeight: 600 }}>
-                          {(exp.fidelity_summary.overall_fidelity * 100).toFixed(1)}%
-                        </span>
+                        <span style={{ fontWeight: 600 }}>{(exp.fidelity_summary.overall_fidelity * 100).toFixed(1)}%</span>
                       ) : (
                         <span style={{ color: "var(--muted)" }}>--</span>
                       )}
@@ -132,7 +122,7 @@ export default function ExperimentsPage() {
                   </tr>
 
                   {expandedId === exp.experiment_id && (
-                    <tr key={`${exp.experiment_id}-details`}>
+                    <tr>
                       <td colSpan={9} style={{ padding: "1rem 1.5rem", backgroundColor: "var(--mint)" }}>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
                           <div>
@@ -187,7 +177,7 @@ export default function ExperimentsPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </tbody>
               ))}
             </tbody>
           </table>

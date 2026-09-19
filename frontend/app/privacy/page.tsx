@@ -1,37 +1,91 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, PrivacyResult } from "@/lib/api";
+import { useState } from "react";
+import { PrivacyResult } from "@/lib/api";
+import { useApi } from "@/lib/swr";
+import { friendlyError } from "@/lib/errors";
+import { SkeletonCard } from "@/components/skeleton";
+import { StatusBadge } from "@/components/status-badge";
+import { toast } from "sonner";
+import { useSWRConfig } from "swr";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
 export default function PrivacyPage() {
-  const [data, setData] = useState<PrivacyResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { data, error, isLoading, mutate } = useApi<PrivacyResult>("/privacy", { errorRetryCount: 0 });
+  const { mutate: globalMutate } = useSWRConfig();
+  const [running, setRunning] = useState(false);
 
-  useEffect(() => {
-    api.getPrivacy()
-      .then(setData)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+  const handleRunPrivacy = async () => {
+    const toastId = toast.loading("Running privacy screening...");
+    setRunning(true);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+      const res = await fetch(`${API_BASE}/privacy?recompute=true`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(body.detail || `Privacy screening failed: ${res.status}`);
+      }
+      const freshData: PrivacyResult = await res.json();
+      mutate(freshData, false);
+      const status = freshData?.overall_status;
+      if (status?.toUpperCase() === "PASS") {
+        toast.success("Privacy screening completed", {
+          id: toastId,
+          description: "Status: PASSED",
+        });
+      } else {
+        toast.warning("Privacy screening completed", {
+          id: toastId,
+          description: "Status: REVIEW NEEDED",
+        });
+      }
+      globalMutate("/overview");
+      globalMutate("/research/readiness");
+    } catch (err: unknown) {
+      toast.error("Privacy screening failed", {
+        id: toastId,
+        description: friendlyError(err),
+      });
+    } finally {
+      setRunning(false);
+    }
+  };
 
-  if (loading) return <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}>Loading privacy analysis...</div>;
-
-  if (error) {
+  if (isLoading) {
     return (
       <div>
         <h1 className="page-title">Privacy Analysis</h1>
-        <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: "3rem" }}>
-          Privacy analysis not available. Generate a cohort first.
+        <p className="page-subtitle">Evaluate privacy protection of synthetic data</p>
+        <div style={{ marginTop: "1.5rem" }}><SkeletonCard lines={3} /></div>
+        <div style={{ marginTop: "1rem", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+          <SkeletonCard lines={5} />
+          <SkeletonCard lines={5} />
         </div>
+        <div style={{ marginTop: "1rem" }}><SkeletonCard lines={8} /></div>
       </div>
     );
   }
 
-  if (!data) return null;
+  if (error || !data) {
+    return (
+      <div>
+        <h1 className="page-title">Privacy Analysis</h1>
+        <p className="page-subtitle">Evaluate privacy protection of synthetic data</p>
+        <div className="card" style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <StatusBadge label="Privacy" status="not_evaluated" />
+        </div>
+        <div className="card" style={{ textAlign: "center", color: "var(--muted)", padding: "3rem", marginTop: "1rem" }}>
+          <p style={{ marginBottom: "1rem" }}>{error ? friendlyError(error) : "Privacy analysis not available. Generate a cohort first."}</p>
+          <button className="btn-primary" onClick={handleRunPrivacy} disabled={running} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            {running && <span className="spinner" />}
+            {running ? "Running..." : "Run Privacy Screening"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const distanceData = [
     {
@@ -53,9 +107,18 @@ export default function PrivacyPage() {
 
   return (
     <div>
-      <div style={{ marginBottom: "1.5rem" }}>
-        <h1 className="page-title">Privacy Analysis</h1>
-        <p className="page-subtitle">Evaluate privacy protection of synthetic data</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+        <div>
+          <h1 className="page-title">Privacy Analysis</h1>
+          <p className="page-subtitle">Evaluate privacy protection of synthetic data</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <button className="btn-secondary" onClick={handleRunPrivacy} disabled={running} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            {running && <span className="spinner" />}
+            {running ? "Running..." : "Re-run Privacy Screening"}
+          </button>
+          <StatusBadge label="Privacy" status="evaluated" />
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "1rem" }}>

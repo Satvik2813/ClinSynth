@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { api, DataSummary } from "@/lib/api";
-import { useApi } from "@/lib/swr";
+import { useApi, isExpected404 } from "@/lib/swr";
 import { friendlyError } from "@/lib/errors";
 import { SkeletonMetrics, SkeletonCard, SkeletonTable } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
@@ -20,11 +20,7 @@ export default function DataPage() {
   const [lastAction, setLastAction] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const noData = error && (
-    String(error).includes("404") ||
-    String(error).toLowerCase().includes("no data") ||
-    String(error).toLowerCase().includes("not found")
-  );
+  const noData = error && isExpected404(error);
 
   const handleLoadDemo = async () => {
     const toastId = toast.loading("Loading demo dataset...");

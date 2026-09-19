@@ -17,26 +17,6 @@ from backend.app.schemas.models import (
 )
 from backend.app.services.state import state
 
-from src.data.loader import load_demo_dataset, detect_dataset_type, map_schema, get_data_summary
-from src.preprocessing.pipeline import preprocess_profiles, preprocess_longitudinal, get_quality_report
-from src.preprocessing.guardrails import check_plausibility, repair_profiles, repair_longitudinal
-from src.synthesis.synthesizer import train_synthesizer, save_synthesizer, generate_samples
-from src.synthesis.comparison import compare_models, format_comparison_table
-from src.cohort.builder import build_cohort
-from src.temporal.generator import TemporalEngine
-from src.validation.engine import (
-    validate_profiles, validate_longitudinal, compute_fidelity_summary,
-    compute_per_column_quality, compute_all_subgroup_fidelity,
-)
-from src.privacy.evaluator import (
-    privacy_screening, apply_privacy_mode, nearest_neighbor_analysis, detect_exact_duplicates,
-)
-from src.research.utility import compute_tstr_utility
-from src.research.subgroups import compute_source_subgroups, compute_rare_cohort_amplification
-from src.utils.export import export_csv, export_json, create_export_zip, create_quality_report
-from src.utils.config import RESEARCH_PRESETS, PRIVACY_MODES, DEFAULT_TRAJECTORY_DIST, RANDOM_SEED
-from src.utils.experiments import save_experiment, list_experiments, load_experiment
-
 router = APIRouter()
 
 
@@ -49,6 +29,9 @@ def health():
 
 @router.post("/data/demo")
 def load_demo():
+    from src.data.loader import load_demo_dataset
+    from src.preprocessing.pipeline import preprocess_profiles, preprocess_longitudinal
+
     profiles, longitudinal = load_demo_dataset()
     state.profiles = profiles
     state.longitudinal = longitudinal
@@ -65,6 +48,9 @@ def load_demo():
 
 @router.post("/data/upload")
 async def upload_csv(file: UploadFile = File(...)):
+    from src.data.loader import detect_dataset_type, map_schema
+    from src.preprocessing.pipeline import preprocess_profiles, preprocess_longitudinal
+
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(400, "Only CSV files are accepted")
     content = await file.read()
@@ -100,6 +86,9 @@ def data_summary():
 
 
 def _data_summary() -> dict:
+    from src.data.loader import get_data_summary
+    from src.preprocessing.pipeline import get_quality_report
+
     profiles = state.profiles_processed
     longitudinal = state.longitudinal_processed
     quality = get_quality_report(profiles) if profiles is not None else {}
@@ -124,6 +113,8 @@ def _data_summary() -> dict:
 
 @router.post("/train")
 def train_model(req: TrainRequest):
+    from src.synthesis.synthesizer import train_synthesizer, save_synthesizer
+
     if not state.data_loaded:
         raise HTTPException(400, "No dataset loaded")
 
@@ -172,6 +163,8 @@ def train_status():
 
 @router.post("/models/compare")
 def compare_models_endpoint(req: ModelCompareRequest):
+    from src.synthesis.comparison import compare_models, format_comparison_table
+
     if not state.data_loaded:
         raise HTTPException(400, "No dataset loaded")
 
@@ -205,6 +198,8 @@ def compare_models_endpoint(req: ModelCompareRequest):
 
 @router.post("/models/select/{model_name}")
 def select_model(model_name: str):
+    from src.synthesis.synthesizer import save_synthesizer
+
     if state.model_comparison_results is None:
         raise HTTPException(400, "Run model comparison first")
 
@@ -226,6 +221,13 @@ def select_model(model_name: str):
 
 @router.post("/cohort/generate")
 def generate_cohort(req: CohortRequest):
+    from src.synthesis.synthesizer import generate_samples
+    from src.cohort.builder import build_cohort
+    from src.temporal.generator import TemporalEngine
+    from src.preprocessing.guardrails import check_plausibility, repair_profiles, repair_longitudinal
+    from src.privacy.evaluator import apply_privacy_mode
+    from src.utils.config import RESEARCH_PRESETS
+
     if not state.model_trained:
         raise HTTPException(400, "No model trained")
 
@@ -407,6 +409,11 @@ def list_patients():
 
 @router.get("/validation")
 def get_validation(recompute: bool = Query(False)):
+    from src.validation.engine import (
+        validate_profiles, validate_longitudinal, compute_fidelity_summary,
+        compute_per_column_quality, compute_all_subgroup_fidelity,
+    )
+
     if not state.cohort_generated:
         raise HTTPException(404, "No cohort generated")
 
@@ -444,6 +451,8 @@ def get_validation(recompute: bool = Query(False)):
 
 @router.get("/privacy")
 def get_privacy(recompute: bool = Query(False)):
+    from src.privacy.evaluator import privacy_screening
+
     if not state.cohort_generated:
         raise HTTPException(404, "No cohort generated")
 
@@ -467,6 +476,9 @@ def get_privacy(recompute: bool = Query(False)):
 
 @router.post("/privacy/compare")
 def privacy_fidelity_compare():
+    from src.privacy.evaluator import apply_privacy_mode, nearest_neighbor_analysis, detect_exact_duplicates
+    from src.validation.engine import validate_profiles, compute_fidelity_summary
+
     if not state.cohort_generated:
         raise HTTPException(400, "No cohort generated")
 
@@ -501,6 +513,8 @@ def privacy_fidelity_compare():
 
 @router.get("/cohort/source-subgroups")
 def get_source_subgroups():
+    from src.research.subgroups import compute_source_subgroups
+
     if not state.data_loaded:
         raise HTTPException(404, "No dataset loaded")
     return compute_source_subgroups(state.profiles_processed)
@@ -508,6 +522,8 @@ def get_source_subgroups():
 
 @router.get("/cohort/rare-amplification")
 def get_rare_amplification():
+    from src.research.subgroups import compute_rare_cohort_amplification
+
     if not state.data_loaded:
         raise HTTPException(404, "No dataset loaded")
     if not state.cohort_generated:
@@ -523,6 +539,8 @@ def get_rare_amplification():
 
 @router.post("/research/utility")
 def research_utility(req: UtilityRequest):
+    from src.research.utility import compute_tstr_utility
+
     if not state.data_loaded:
         raise HTTPException(400, "No dataset loaded")
     if not state.cohort_generated:
@@ -547,6 +565,8 @@ def research_utility(req: UtilityRequest):
 
 @router.get("/research/readiness")
 def research_readiness():
+    from src.research.subgroups import compute_rare_cohort_amplification
+
     if not state.cohort_generated:
         raise HTTPException(404, "No cohort generated")
 
@@ -648,12 +668,16 @@ def get_guardrails():
 
 @router.get("/experiments")
 def get_experiments():
+    from src.utils.experiments import list_experiments
+
     experiments = list_experiments()
     return {"experiments": experiments[:50]}
 
 
 @router.get("/experiments/{exp_id}")
 def get_experiment(exp_id: str):
+    from src.utils.experiments import load_experiment
+
     exp = load_experiment(exp_id)
     if not exp:
         raise HTTPException(404, f"Experiment {exp_id} not found")
@@ -662,6 +686,8 @@ def get_experiment(exp_id: str):
 
 @router.post("/experiments/save")
 def save_current_experiment():
+    from src.utils.experiments import save_experiment
+
     if not state.cohort_generated:
         raise HTTPException(400, "No cohort generated")
     if state.fidelity_summary is None:
@@ -697,6 +723,8 @@ def save_current_experiment():
 
 @router.get("/export/{fmt}")
 def export_data(fmt: str):
+    from src.utils.export import export_csv, export_json, create_export_zip
+
     if not state.cohort_generated:
         raise HTTPException(404, "No cohort generated")
 
@@ -728,6 +756,8 @@ def export_data(fmt: str):
             headers={"Content-Disposition": f"attachment; filename=longitudinal.json"},
         )
     elif fmt == "quality_report":
+        from src.utils.export import create_quality_report
+
         src_summary = None
         if state.profiles_processed is not None:
             src_summary = {
@@ -782,11 +812,15 @@ def export_data(fmt: str):
 
 @router.get("/config/presets")
 def get_presets():
+    from src.utils.config import RESEARCH_PRESETS
+
     return {"presets": RESEARCH_PRESETS}
 
 
 @router.get("/config/privacy_modes")
 def get_privacy_modes():
+    from src.utils.config import PRIVACY_MODES
+
     return {"modes": PRIVACY_MODES}
 
 

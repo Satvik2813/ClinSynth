@@ -61,6 +61,7 @@ function MetricPanel({
 
 export default function ResearchReadinessPage() {
   const { data, error, isLoading, mutate } = useApi<ResearchReadiness>("/research/readiness", { errorRetryCount: 0 });
+  const { data: currentCohort } = useApi<any>("/cohort/current", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
   
   const initial = getInitialReadinessForm();
@@ -75,7 +76,15 @@ export default function ResearchReadinessPage() {
   const [runningUtility, setRunningUtility] = useState(false);
 
   const handleRunUtility = async () => {
-    const toastId = toast.loading("Running research utility validation...");
+    if (!currentCohort) {
+      toast.error("Analysis unavailable", {
+        id: "research-utility-run",
+        description: "Generate a synthetic cohort before running analysis.",
+      });
+      return;
+    }
+    const toastId = "research-utility-run";
+    toast.loading("Running research utility validation...", { id: toastId });
     setRunningUtility(true);
     try {
       const result = await api.getResearchUtility({ target: utilityTarget, model_type: utilityModel });

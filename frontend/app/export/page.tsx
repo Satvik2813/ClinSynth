@@ -4,6 +4,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/errors";
 
+import { useApi } from "@/lib/swr";
+import { CohortResult } from "@/lib/api";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 interface ExportOption {
@@ -70,10 +73,20 @@ function extractFilename(response: Response, fallback: string): string {
 
 export default function ExportPage() {
   const [downloading, setDownloading] = useState<string | null>(null);
+  const { data: currentCohort } = useApi<CohortResult>("/cohort/current");
 
   const handleDownload = async (opt: ExportOption) => {
+    if (!currentCohort) {
+      toast.error("Export unavailable", {
+        id: `export-${opt.format}`,
+        description: "Generate a synthetic cohort before exporting.",
+      });
+      return;
+    }
+
+    const toastId = `export-${opt.format}`;
     const isZip = opt.key === "zip";
-    const toastId = toast.loading(isZip ? "Preparing research bundle..." : "Preparing export...");
+    toast.loading(isZip ? "Preparing research bundle..." : "Preparing export...", { id: toastId });
     setDownloading(opt.key);
     try {
       const res = await fetch(`${API_BASE}/export/${opt.key}`);

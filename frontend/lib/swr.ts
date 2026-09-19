@@ -23,7 +23,11 @@ async function swrFetcher<T>(path: string): Promise<T> {
 const defaultConfig: SWRConfiguration = {
   revalidateOnFocus: false,
   dedupingInterval: 10000,
-  errorRetryCount: 2,
+  onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500) return;
+    if (retryCount >= 2) return;
+    setTimeout(() => revalidate({ retryCount }), 5000);
+  },
 };
 
 export function useApi<T>(path: string | null, config?: SWRConfiguration) {

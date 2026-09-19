@@ -24,7 +24,8 @@ export default function DataPage() {
   const noData = error && isExpected404(error);
 
   const handleLoadDemo = async () => {
-    const toastId = toast.loading("Loading demo dataset...");
+    const toastId = "data-demo-load";
+    toast.loading("Loading demo dataset...", { id: toastId });
     try {
       setDemoLoading(true);
       const data = await api.loadDemo();
@@ -56,7 +57,8 @@ export default function DataPage() {
       toast.error("Please upload a CSV file.");
       return;
     }
-    const toastId = toast.loading("Uploading dataset...");
+    const toastId = "data-upload";
+    toast.loading("Uploading dataset...", { id: toastId });
     try {
       setUploadLoading(true);
       const data = await api.uploadCsv(file);

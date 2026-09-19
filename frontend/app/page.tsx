@@ -24,7 +24,8 @@ export default function DashboardPage() {
   const [demoLoading, setDemoLoading] = useState(false);
 
   const handleLoadDemo = async () => {
-    const toastId = toast.loading("Loading demo dataset...");
+    const toastId = "dashboard-demo-load";
+    toast.loading("Loading demo dataset...", { id: toastId });
     try {
       setDemoLoading(true);
       const data = await api.loadDemo();

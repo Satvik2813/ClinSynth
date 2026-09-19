@@ -33,6 +33,8 @@ function getInitialCohortForm() {
 export default function CohortBuilderPage() {
   const { data: presetsData, error: loadError, isLoading: loadingPresets } = useApi<{ presets: Record<string, Preset> }>("/config/presets");
   const { data: currentCohort } = useApi<CohortResult>("/cohort/current", { errorRetryCount: 0 });
+  const { data: dataSummary } = useApi<unknown>("/data/summary", { errorRetryCount: 0 });
+  const { data: trainStatus } = useApi<{ status: string }>("/train/status", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
   const presets = presetsData?.presets ?? {};
 
@@ -111,11 +113,26 @@ export default function CohortBuilderPage() {
   };
 
   const handleGenerate = async () => {
-    if (trajectorySum !== 1.0) {
-      toast.error(`Trajectory distribution must sum to 1.0 (currently ${trajectorySum})`);
+    if (!dataSummary) {
+      toast.error("Generation unavailable", {
+        id: "cohort-generate",
+        description: "Load a dataset before generating a cohort.",
+      });
       return;
     }
-    const toastId = toast.loading("Generating synthetic cohort...");
+    if (!trainStatus || trainStatus.status !== "completed") {
+      toast.error("Generation unavailable", {
+        id: "cohort-generate",
+        description: "Train a model before generating a cohort.",
+      });
+      return;
+    }
+    if (trajectorySum !== 1.0) {
+      toast.error(`Trajectory distribution must sum to 1.0 (currently ${trajectorySum})`, { id: "cohort-generate" });
+      return;
+    }
+    const toastId = "cohort-generate";
+    toast.loading("Generating synthetic cohort...", { id: toastId });
     setGenerating(true);
     setResult(null);
     try {

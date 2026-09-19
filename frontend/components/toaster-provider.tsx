@@ -6,6 +6,7 @@ export function ToasterProvider() {
   return (
     <Toaster
       position="top-right"
+      closeButton
       toastOptions={{
         style: {
           background: "#FFFFFF",

@@ -18,15 +18,25 @@ import {
   LabelList,
   Legend,
 } from "recharts";
+import { useApi } from "@/lib/swr";
 
 const COLORS = ["#2F6B5F", "#4FAE8A", "#D4A843", "#0F2F2C", "#C45B52", "#66756F"];
 
 export default function PrivacyFidelityPage() {
   const [results, setResults] = useState<PrivacyFidelityEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const { data: dataSummary } = useApi<unknown>("/data/summary", { errorRetryCount: 0 });
 
   const runComparison = async () => {
-    const toastId = toast.loading("Running privacy vs fidelity comparison...");
+    if (!dataSummary) {
+      toast.error("Comparison unavailable", {
+        id: "privacy-fidelity-run",
+        description: "Load a dataset before running comparison.",
+      });
+      return;
+    }
+    const toastId = "privacy-fidelity-run";
+    toast.loading("Running privacy vs fidelity comparison...", { id: toastId });
     setLoading(true);
     try {
       const data = await api.comparePrivacy();

@@ -14,11 +14,20 @@ import {
 
 export default function PrivacyPage() {
   const { data, error, isLoading, mutate } = useApi<PrivacyResult>("/privacy", { errorRetryCount: 0 });
+  const { data: currentCohort } = useApi<unknown>("/cohort/current", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
   const [running, setRunning] = useState(false);
 
   const handleRunPrivacy = async () => {
-    const toastId = toast.loading("Running privacy screening...");
+    if (!currentCohort) {
+      toast.error("Privacy analysis unavailable", {
+        id: "privacy-run",
+        description: "Generate a synthetic cohort before running privacy screening.",
+      });
+      return;
+    }
+    const toastId = "privacy-run";
+    toast.loading("Running privacy screening...", { id: toastId });
     setRunning(true);
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";

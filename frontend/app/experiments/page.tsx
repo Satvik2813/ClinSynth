@@ -15,7 +15,8 @@ export default function ExperimentsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleSave = async () => {
-    const toastId = toast.loading("Saving current experiment...");
+    const toastId = "experiment-save";
+    toast.loading("Saving current experiment...", { id: toastId });
     setSaving(true);
     try {
       const saved = await api.saveExperiment();

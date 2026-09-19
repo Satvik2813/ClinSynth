@@ -37,11 +37,20 @@ export default function TrainPage() {
 
   const [training, setTraining] = useState(false);
   const [trainResult, setTrainResult] = useState<TrainResult | null>(null);
+  const { data: dataSummary } = useApi<any>("/data/summary", { errorRetryCount: 0 });
 
   const modelLabel = synthType === "CTGANSynthesizer" ? "CTGAN" : "Gaussian Copula";
 
   const handleTrain = async () => {
-    const toastId = toast.loading(`Training ${modelLabel}...`);
+    if (!dataSummary) {
+      toast.error("Training unavailable", {
+        id: "model-train-run",
+        description: "Load a dataset before training a model.",
+      });
+      return;
+    }
+    const toastId = "model-train-run";
+    toast.loading(`Training ${modelLabel}...`, { id: toastId });
     setTraining(true);
     setTrainResult(null);
     try {

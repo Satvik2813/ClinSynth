@@ -21,11 +21,20 @@ import { useSWRConfig } from "swr";
 
 export default function ValidationPage() {
   const { data, error, isLoading, mutate } = useApi<ValidationResult>("/validation", { errorRetryCount: 0 });
+  const { data: currentCohort } = useApi<any>("/cohort/current", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
   const [running, setRunning] = useState(false);
 
   const handleRunValidation = async () => {
-    const toastId = toast.loading("Running fidelity validation...");
+    if (!currentCohort) {
+      toast.error("Validation unavailable", {
+        id: "validation-run",
+        description: "Generate a synthetic cohort before running validation.",
+      });
+      return;
+    }
+    const toastId = "validation-run";
+    toast.loading("Running fidelity validation...", { id: toastId });
     setRunning(true);
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";

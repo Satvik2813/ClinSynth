@@ -15,6 +15,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { useApi } from "@/lib/swr";
 
 export default function ModelComparisonPage() {
   const { mutate: globalMutate } = useSWRConfig();
@@ -23,9 +24,18 @@ export default function ModelComparisonPage() {
   const [result, setResult] = useState<CompareResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [selecting, setSelecting] = useState<string | null>(null);
+  const { data: dataSummary } = useApi<unknown>("/data/summary", { errorRetryCount: 0 });
 
   const handleCompare = async () => {
-    const toastId = toast.loading("Comparing models...");
+    if (!dataSummary) {
+      toast.error("Comparison unavailable", {
+        id: "model-compare-run",
+        description: "Load a dataset before comparing models.",
+      });
+      return;
+    }
+    const toastId = "model-compare-run";
+    toast.loading("Comparing models...", { id: toastId });
     setLoading(true);
     setResult(null);
     try {
@@ -47,7 +57,8 @@ export default function ModelComparisonPage() {
   };
 
   const handleSelect = async (name: string) => {
-    const toastId = toast.loading(`Selecting ${name}...`);
+    const toastId = "model-select";
+    toast.loading(`Selecting ${name}...`, { id: toastId });
     setSelecting(name);
     try {
       const data = await api.selectModel(name);

@@ -258,6 +258,41 @@ class TestOverview:
         assert data["data_loaded"] is True
         assert data["source_patients"] > 0
 
+    def test_pipeline_state_consistency(self):
+        # 1. Load data
+        client.post("/api/data/demo")
+        r = client.get("/api/overview")
+        assert r.json()["data_loaded"] is True
+        assert r.json()["model_trained"] is False
+        assert r.json()["cohort_generated"] is False
+
+        # 2. Train model
+        r = client.post("/api/train", json={"synth_type": "GaussianCopulaSynthesizer", "mode": "Demo (fast)"})
+        assert r.status_code == 200
+        r_train_status = client.get("/api/train/status")
+        assert r_train_status.json()["trained"] is True
+        
+        r_overview = client.get("/api/overview")
+        assert r_overview.json()["model_trained"] is True
+        assert r_overview.json()["data_loaded"] is True
+
+        # 3. Generate cohort
+        r = client.post("/api/cohort/generate", json={"num_patients": 100, "timeline_days": 10})
+        assert r.status_code == 200
+        
+        r_overview = client.get("/api/overview")
+        assert r_overview.json()["cohort_generated"] is True
+
+        # 4. Load new dataset (should reset downstream state)
+        client.post("/api/data/demo")
+        r_overview = client.get("/api/overview")
+        assert r_overview.json()["data_loaded"] is True
+        assert r_overview.json()["model_trained"] is False
+        assert r_overview.json()["cohort_generated"] is False
+        
+        r_train_status = client.get("/api/train/status")
+        assert r_train_status.json()["trained"] is False
+
 
 class TestCORS:
     def test_preflight_production_origin(self):

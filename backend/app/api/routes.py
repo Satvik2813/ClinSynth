@@ -65,11 +65,23 @@ async def upload_csv(file: UploadFile = File(...)):
     if dtype == "profile":
         state.profiles = df
         state.profiles_processed = preprocess_profiles(df)
+        state.synthesizer = None
+        state.train_info = None
+        state.synthetic_profiles = None
+        state.synthetic_longitudinal = None
+        state.model_comparison_results = None
+        state.clear_cohort_results()
         if state.longitudinal is None:
             return {**_data_summary(), "warning": "No longitudinal data loaded yet. Temporal features will use generated data."}
     elif dtype == "longitudinal":
         state.longitudinal = df
         state.longitudinal_processed = preprocess_longitudinal(df)
+        state.synthesizer = None
+        state.train_info = None
+        state.synthetic_profiles = None
+        state.synthetic_longitudinal = None
+        state.model_comparison_results = None
+        state.clear_cohort_results()
         if state.profiles is None:
             return {**_data_summary(), "warning": "No profile data loaded yet. Please also upload a profile dataset."}
     else:

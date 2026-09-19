@@ -21,7 +21,7 @@ import { useSWRConfig } from "swr";
 
 export default function ValidationPage() {
   const { data, error, isLoading, mutate } = useApi<ValidationResult>("/validation", { errorRetryCount: 0 });
-  const { data: currentCohort } = useApi<any>("/cohort/current", { errorRetryCount: 0 });
+  const { data: currentCohort } = useApi<unknown>("/cohort/current", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
   const [running, setRunning] = useState(false);
 

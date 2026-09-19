@@ -61,7 +61,7 @@ function MetricPanel({
 
 export default function ResearchReadinessPage() {
   const { data, error, isLoading, mutate } = useApi<ResearchReadiness>("/research/readiness", { errorRetryCount: 0 });
-  const { data: currentCohort } = useApi<any>("/cohort/current", { errorRetryCount: 0 });
+  const { data: currentCohort } = useApi<unknown>("/cohort/current", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
   
   const initial = getInitialReadinessForm();

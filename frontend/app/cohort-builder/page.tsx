@@ -34,7 +34,7 @@ export default function CohortBuilderPage() {
   const { data: presetsData, error: loadError, isLoading: loadingPresets } = useApi<{ presets: Record<string, Preset> }>("/config/presets");
   const { data: currentCohort } = useApi<CohortResult>("/cohort/current", { errorRetryCount: 0 });
   const { data: dataSummary } = useApi<unknown>("/data/summary", { errorRetryCount: 0 });
-  const { data: trainStatus } = useApi<{ status: string }>("/train/status", { errorRetryCount: 0 });
+  const { data: trainStatus } = useApi<{ trained: boolean }>("/train/status", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
   const presets = presetsData?.presets ?? {};
 
@@ -120,7 +120,7 @@ export default function CohortBuilderPage() {
       });
       return;
     }
-    if (!trainStatus || trainStatus.status !== "completed") {
+    if (!trainStatus || !trainStatus.trained) {
       toast.error("Generation unavailable", {
         id: "cohort-generate",
         description: "Train a model before generating a cohort.",

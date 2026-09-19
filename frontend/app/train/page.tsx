@@ -37,7 +37,7 @@ export default function TrainPage() {
 
   const [training, setTraining] = useState(false);
   const [trainResult, setTrainResult] = useState<TrainResult | null>(null);
-  const { data: dataSummary } = useApi<any>("/data/summary", { errorRetryCount: 0 });
+  const { data: dataSummary } = useApi<unknown>("/data/summary", { errorRetryCount: 0 });
 
   const modelLabel = synthType === "CTGANSynthesizer" ? "CTGAN" : "Gaussian Copula";
 

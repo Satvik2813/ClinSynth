@@ -70,4 +70,13 @@ class AppState:
         self.utility_results = None
 
 
-state = AppState()
+import sys
+
+if "_clinsynth_app_state" not in sys.modules:
+    class _StateContainer:
+        pass
+    _container = _StateContainer()
+    _container.state = AppState()
+    sys.modules["_clinsynth_app_state"] = _container
+
+state = sys.modules["_clinsynth_app_state"].state

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { api, TrainResult, TrainInfo } from "@/lib/api";
 import { useApi } from "@/lib/swr";
 import { friendlyError } from "@/lib/errors";
@@ -8,15 +8,32 @@ import { SkeletonCard } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
+import { getSection, setSection } from "@/lib/pipeline-session";
+
+function getInitialTrainForm() {
+  const saved = getSection("train");
+  return {
+    synthType: saved?.synthType ?? "GaussianCopulaSynthesizer",
+    mode: saved?.mode ?? "demo",
+    epochs: saved?.epochs ?? 100,
+    batchSize: saved?.batchSize ?? 500,
+  };
+}
 
 export default function TrainPage() {
   const { data: status, error, isLoading, mutate } = useApi<{ trained: boolean; info: TrainInfo | null }>("/train/status");
   const { mutate: globalMutate } = useSWRConfig();
 
-  const [synthType, setSynthType] = useState("GaussianCopulaSynthesizer");
-  const [mode, setMode] = useState("demo");
-  const [epochs, setEpochs] = useState(100);
-  const [batchSize, setBatchSize] = useState(500);
+  const initial = getInitialTrainForm();
+  const [synthType, setSynthType] = useState(initial.synthType);
+  const [mode, setMode] = useState(initial.mode);
+  const [epochs, setEpochs] = useState(initial.epochs);
+  const [batchSize, setBatchSize] = useState(initial.batchSize);
+
+  const persistForm = useCallback((patch: Partial<{ synthType: string; mode: string; epochs: number; batchSize: number }>) => {
+    const current = getSection("train") ?? {};
+    setSection("train", { ...current, ...patch });
+  }, []);
 
   const [training, setTraining] = useState(false);
   const [trainResult, setTrainResult] = useState<TrainResult | null>(null);
@@ -51,6 +68,10 @@ export default function TrainPage() {
 
       mutate({ trained: true, info: { synth_type: result.synth_type, training_rows: result.training_rows, epochs: result.epochs, duration_seconds: result.duration_seconds } }, false);
       globalMutate("/overview");
+      globalMutate("/cohort/current");
+      globalMutate("/validation");
+      globalMutate("/privacy");
+      globalMutate("/research/readiness");
     } catch (err: unknown) {
       toast.error("Model training failed", {
         id: toastId,
@@ -128,7 +149,7 @@ export default function TrainPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <div>
             <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Synthesizer Type</label>
-            <select className="select-field" value={synthType} onChange={(e) => setSynthType(e.target.value)} disabled={training}>
+            <select className="select-field" value={synthType} onChange={(e) => { setSynthType(e.target.value); persistForm({ synthType: e.target.value }); }} disabled={training}>
               <option value="GaussianCopulaSynthesizer">GaussianCopulaSynthesizer</option>
               <option value="CTGANSynthesizer">CTGANSynthesizer</option>
             </select>
@@ -136,7 +157,7 @@ export default function TrainPage() {
 
           <div>
             <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Mode</label>
-            <select className="select-field" value={mode} onChange={(e) => setMode(e.target.value)} disabled={training}>
+            <select className="select-field" value={mode} onChange={(e) => { setMode(e.target.value); persistForm({ mode: e.target.value }); }} disabled={training}>
               <option value="demo">Demo (fast)</option>
               <option value="full">Full</option>
             </select>
@@ -146,14 +167,14 @@ export default function TrainPage() {
             <>
               <div>
                 <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Epochs: {epochs}</label>
-                <input type="range" min={10} max={500} step={10} value={epochs} onChange={(e) => setEpochs(Number(e.target.value))} disabled={training} style={{ width: "100%" }} />
+                <input type="range" min={10} max={500} step={10} value={epochs} onChange={(e) => { const v = Number(e.target.value); setEpochs(v); persistForm({ epochs: v }); }} disabled={training} style={{ width: "100%" }} />
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--muted)" }}>
                   <span>10</span><span>250</span><span>500</span>
                 </div>
               </div>
               <div>
                 <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Batch Size</label>
-                <input className="input-field" type="number" min={50} max={5000} step={50} value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))} disabled={training} />
+                <input className="input-field" type="number" min={50} max={5000} step={50} value={batchSize} onChange={(e) => { const v = Number(e.target.value); setBatchSize(v); persistForm({ batchSize: v }); }} disabled={training} />
               </div>
             </>
           )}

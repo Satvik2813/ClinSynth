@@ -8,6 +8,7 @@ import { SkeletonMetrics, SkeletonCard, SkeletonTable } from "@/components/skele
 import { StatusBadge } from "@/components/status-badge";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
+import { clearDownstream } from "@/lib/pipeline-session";
 
 export default function DataPage() {
   const { data: summary, error, isLoading, mutate } = useApi<DataSummary>("/data/summary", {
@@ -35,6 +36,11 @@ export default function DataPage() {
       mutate(data, false);
       globalMutate("/overview");
       globalMutate("/train/status");
+      globalMutate("/cohort/current");
+      globalMutate("/validation");
+      globalMutate("/privacy");
+      globalMutate("/research/readiness");
+      clearDownstream();
     } catch (err: unknown) {
       toast.error("Dataset loading failed", {
         id: toastId,
@@ -76,6 +82,11 @@ export default function DataPage() {
       mutate(data, false);
       globalMutate("/overview");
       globalMutate("/train/status");
+      globalMutate("/cohort/current");
+      globalMutate("/validation");
+      globalMutate("/privacy");
+      globalMutate("/research/readiness");
+      clearDownstream();
     } catch (err: unknown) {
       toast.error("Dataset upload failed", {
         id: toastId,

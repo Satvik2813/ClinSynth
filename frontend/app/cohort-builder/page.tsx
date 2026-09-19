@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { api, Preset, CohortResult, Constraint } from "@/lib/api";
 import { useApi } from "@/lib/swr";
 import { friendlyError } from "@/lib/errors";
@@ -8,28 +8,55 @@ import { SkeletonCard } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
+import { getSection, setSection } from "@/lib/pipeline-session";
+
+function getInitialCohortForm() {
+  const saved = getSection("cohort");
+  return {
+    numPatients: saved?.numPatients ?? 500,
+    timelineDays: saved?.timelineDays ?? 30,
+    elderlyPct: saved?.elderlyPct ?? 0.3,
+    diabetesPct: saved?.diabetesPct ?? 0.25,
+    hypertensionPct: saved?.hypertensionPct ?? 0.35,
+    htnAmongDiabeticPct: saved?.htnAmongDiabeticPct ?? null,
+    diabetesAmongElderlyPct: saved?.diabetesAmongElderlyPct ?? null,
+    privacyMode: saved?.privacyMode ?? "balanced",
+    seed: saved?.seed ?? 42,
+    stable: saved?.stable ?? 0.4,
+    improving: saved?.improving ?? 0.25,
+    worsening: saved?.worsening ?? 0.2,
+    fluctuating: saved?.fluctuating ?? 0.15,
+    selectedPreset: saved?.selectedPreset ?? "",
+  };
+}
 
 export default function CohortBuilderPage() {
   const { data: presetsData, error: loadError, isLoading: loadingPresets } = useApi<{ presets: Record<string, Preset> }>("/config/presets");
   const { data: currentCohort } = useApi<CohortResult>("/cohort/current", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
   const presets = presetsData?.presets ?? {};
-  const [selectedPreset, setSelectedPreset] = useState<string>("");
 
-  const [numPatients, setNumPatients] = useState(500);
-  const [timelineDays, setTimelineDays] = useState(30);
-  const [elderlyPct, setElderlyPct] = useState(0.3);
-  const [diabetesPct, setDiabetesPct] = useState(0.25);
-  const [hypertensionPct, setHypertensionPct] = useState(0.35);
-  const [htnAmongDiabeticPct, setHtnAmongDiabeticPct] = useState<number | null>(null);
-  const [diabetesAmongElderlyPct, setDiabetesAmongElderlyPct] = useState<number | null>(null);
-  const [privacyMode, setPrivacyMode] = useState("balanced");
-  const [seed, setSeed] = useState(42);
+  const initial = getInitialCohortForm();
+  const [selectedPreset, setSelectedPreset] = useState<string>(initial.selectedPreset);
+  const [numPatients, setNumPatients] = useState(initial.numPatients);
+  const [timelineDays, setTimelineDays] = useState(initial.timelineDays);
+  const [elderlyPct, setElderlyPct] = useState(initial.elderlyPct);
+  const [diabetesPct, setDiabetesPct] = useState(initial.diabetesPct);
+  const [hypertensionPct, setHypertensionPct] = useState(initial.hypertensionPct);
+  const [htnAmongDiabeticPct, setHtnAmongDiabeticPct] = useState<number | null>(initial.htnAmongDiabeticPct);
+  const [diabetesAmongElderlyPct, setDiabetesAmongElderlyPct] = useState<number | null>(initial.diabetesAmongElderlyPct);
+  const [privacyMode, setPrivacyMode] = useState(initial.privacyMode);
+  const [seed, setSeed] = useState(initial.seed);
 
-  const [stable, setStable] = useState(0.4);
-  const [improving, setImproving] = useState(0.25);
-  const [worsening, setWorsening] = useState(0.2);
-  const [fluctuating, setFluctuating] = useState(0.15);
+  const [stable, setStable] = useState(initial.stable);
+  const [improving, setImproving] = useState(initial.improving);
+  const [worsening, setWorsening] = useState(initial.worsening);
+  const [fluctuating, setFluctuating] = useState(initial.fluctuating);
+
+  const persistCohort = useCallback((patch: Record<string, unknown>) => {
+    const current = getSection("cohort") ?? {};
+    setSection("cohort", { ...current, ...patch });
+  }, []);
 
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<CohortResult | null>(null);
@@ -38,7 +65,7 @@ export default function CohortBuilderPage() {
 
   const applyPreset = (key: string) => {
     setSelectedPreset(key);
-    if (!key) return;
+    if (!key) { persistCohort({ selectedPreset: "" }); return; }
     const p = presets[key];
     if (!p) return;
     setElderlyPct(p.elderly_pct);
@@ -46,31 +73,41 @@ export default function CohortBuilderPage() {
     setHypertensionPct(p.hypertension_pct);
     setHtnAmongDiabeticPct(p.htn_among_diabetic_pct);
     setDiabetesAmongElderlyPct(p.diabetes_among_elderly_pct);
-    if (p.trajectory_dist) {
-      setStable(p.trajectory_dist.stable ?? 0.4);
-      setImproving(p.trajectory_dist.improving ?? 0.25);
-      setWorsening(p.trajectory_dist.worsening ?? 0.2);
-      setFluctuating(p.trajectory_dist.fluctuating ?? 0.15);
-    }
+    const s = p.trajectory_dist?.stable ?? 0.4;
+    const im = p.trajectory_dist?.improving ?? 0.25;
+    const w = p.trajectory_dist?.worsening ?? 0.2;
+    const f = p.trajectory_dist?.fluctuating ?? 0.15;
+    setStable(s); setImproving(im); setWorsening(w); setFluctuating(f);
+    persistCohort({
+      selectedPreset: key,
+      elderlyPct: p.elderly_pct, diabetesPct: p.diabetes_pct,
+      hypertensionPct: p.hypertension_pct,
+      htnAmongDiabeticPct: p.htn_among_diabetic_pct,
+      diabetesAmongElderlyPct: p.diabetes_among_elderly_pct,
+      stable: s, improving: im, worsening: w, fluctuating: f,
+    });
   };
 
   const adjustTrajectory = (
     setter: (v: number) => void,
     newVal: number,
-    others: { val: number; set: (v: number) => void }[]
+    others: { val: number; set: (v: number) => void; key: string }[]
   ) => {
     const clamped = Math.min(1, Math.max(0, newVal));
     setter(+clamped.toFixed(2));
     const remaining = +(1 - clamped).toFixed(2);
     const othersSum = others.reduce((s, o) => s + o.val, 0);
+    const patch: Record<string, number> = {};
     if (othersSum === 0) {
       const each = +(remaining / others.length).toFixed(2);
-      others.forEach((o) => o.set(each));
+      others.forEach((o) => { o.set(each); patch[o.key] = each; });
     } else {
       others.forEach((o) => {
-        o.set(+((o.val / othersSum) * remaining).toFixed(2));
+        const v = +((o.val / othersSum) * remaining).toFixed(2);
+        o.set(v); patch[o.key] = v;
       });
     }
+    persistCohort(patch);
   };
 
   const handleGenerate = async () => {
@@ -151,11 +188,11 @@ export default function CohortBuilderPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
             <div>
               <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Number of Patients</label>
-              <input className="input-field" type="number" min={50} max={10000} value={numPatients} onChange={(e) => setNumPatients(Number(e.target.value))} disabled={generating} />
+              <input className="input-field" type="number" min={50} max={10000} value={numPatients} onChange={(e) => { const v = Number(e.target.value); setNumPatients(v); persistCohort({ numPatients: v }); }} disabled={generating} />
             </div>
             <div>
               <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Timeline (days)</label>
-              <input className="input-field" type="number" min={5} max={365} value={timelineDays} onChange={(e) => setTimelineDays(Number(e.target.value))} disabled={generating} />
+              <input className="input-field" type="number" min={5} max={365} value={timelineDays} onChange={(e) => { const v = Number(e.target.value); setTimelineDays(v); persistCohort({ timelineDays: v }); }} disabled={generating} />
             </div>
             <div>
               <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Research Preset</label>
@@ -171,17 +208,17 @@ export default function CohortBuilderPage() {
           <fieldset style={{ border: "1px solid var(--muted)", borderRadius: 8, padding: "1rem" }}>
             <legend style={{ fontWeight: 600, fontSize: "0.95rem", padding: "0 0.5rem" }}>Demographics</legend>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              <SliderField label={`Elderly %: ${pctLabel(elderlyPct)}`} value={elderlyPct} onChange={(v) => setElderlyPct(v)} disabled={generating} />
-              <SliderField label={`Diabetes %: ${pctLabel(diabetesPct)}`} value={diabetesPct} onChange={(v) => setDiabetesPct(v)} disabled={generating} />
-              <SliderField label={`Hypertension %: ${pctLabel(hypertensionPct)}`} value={hypertensionPct} onChange={(v) => setHypertensionPct(v)} disabled={generating} />
+              <SliderField label={`Elderly %: ${pctLabel(elderlyPct)}`} value={elderlyPct} onChange={(v) => { setElderlyPct(v); persistCohort({ elderlyPct: v }); }} disabled={generating} />
+              <SliderField label={`Diabetes %: ${pctLabel(diabetesPct)}`} value={diabetesPct} onChange={(v) => { setDiabetesPct(v); persistCohort({ diabetesPct: v }); }} disabled={generating} />
+              <SliderField label={`Hypertension %: ${pctLabel(hypertensionPct)}`} value={hypertensionPct} onChange={(v) => { setHypertensionPct(v); persistCohort({ hypertensionPct: v }); }} disabled={generating} />
             </div>
           </fieldset>
 
           <fieldset style={{ border: "1px solid var(--muted)", borderRadius: 8, padding: "1rem" }}>
             <legend style={{ fontWeight: 600, fontSize: "0.95rem", padding: "0 0.5rem" }}>Conditional Constraints (optional)</legend>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              <NullableSlider label="HTN among Diabetic %" value={htnAmongDiabeticPct} onChange={setHtnAmongDiabeticPct} disabled={generating} />
-              <NullableSlider label="Diabetes among Elderly %" value={diabetesAmongElderlyPct} onChange={setDiabetesAmongElderlyPct} disabled={generating} />
+              <NullableSlider label="HTN among Diabetic %" value={htnAmongDiabeticPct} onChange={(v) => { setHtnAmongDiabeticPct(v); persistCohort({ htnAmongDiabeticPct: v }); }} disabled={generating} />
+              <NullableSlider label="Diabetes among Elderly %" value={diabetesAmongElderlyPct} onChange={(v) => { setDiabetesAmongElderlyPct(v); persistCohort({ diabetesAmongElderlyPct: v }); }} disabled={generating} />
             </div>
           </fieldset>
 
@@ -193,17 +230,17 @@ export default function CohortBuilderPage() {
               </span>
             </legend>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              <SliderField label={`Stable: ${pctLabel(stable)}`} value={stable} onChange={(v) => adjustTrajectory(setStable, v, [{ val: improving, set: setImproving }, { val: worsening, set: setWorsening }, { val: fluctuating, set: setFluctuating }])} disabled={generating} />
-              <SliderField label={`Improving: ${pctLabel(improving)}`} value={improving} onChange={(v) => adjustTrajectory(setImproving, v, [{ val: stable, set: setStable }, { val: worsening, set: setWorsening }, { val: fluctuating, set: setFluctuating }])} disabled={generating} />
-              <SliderField label={`Worsening: ${pctLabel(worsening)}`} value={worsening} onChange={(v) => adjustTrajectory(setWorsening, v, [{ val: stable, set: setStable }, { val: improving, set: setImproving }, { val: fluctuating, set: setFluctuating }])} disabled={generating} />
-              <SliderField label={`Fluctuating: ${pctLabel(fluctuating)}`} value={fluctuating} onChange={(v) => adjustTrajectory(setFluctuating, v, [{ val: stable, set: setStable }, { val: improving, set: setImproving }, { val: worsening, set: setWorsening }])} disabled={generating} />
+              <SliderField label={`Stable: ${pctLabel(stable)}`} value={stable} onChange={(v) => adjustTrajectory(setStable, v, [{ val: improving, set: setImproving, key: "improving" }, { val: worsening, set: setWorsening, key: "worsening" }, { val: fluctuating, set: setFluctuating, key: "fluctuating" }])} disabled={generating} />
+              <SliderField label={`Improving: ${pctLabel(improving)}`} value={improving} onChange={(v) => adjustTrajectory(setImproving, v, [{ val: stable, set: setStable, key: "stable" }, { val: worsening, set: setWorsening, key: "worsening" }, { val: fluctuating, set: setFluctuating, key: "fluctuating" }])} disabled={generating} />
+              <SliderField label={`Worsening: ${pctLabel(worsening)}`} value={worsening} onChange={(v) => adjustTrajectory(setWorsening, v, [{ val: stable, set: setStable, key: "stable" }, { val: improving, set: setImproving, key: "improving" }, { val: fluctuating, set: setFluctuating, key: "fluctuating" }])} disabled={generating} />
+              <SliderField label={`Fluctuating: ${pctLabel(fluctuating)}`} value={fluctuating} onChange={(v) => adjustTrajectory(setFluctuating, v, [{ val: stable, set: setStable, key: "stable" }, { val: improving, set: setImproving, key: "improving" }, { val: worsening, set: setWorsening, key: "worsening" }])} disabled={generating} />
             </div>
           </fieldset>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
             <div>
               <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Privacy Mode</label>
-              <select className="select-field" value={privacyMode} onChange={(e) => setPrivacyMode(e.target.value)} disabled={generating}>
+              <select className="select-field" value={privacyMode} onChange={(e) => { setPrivacyMode(e.target.value); persistCohort({ privacyMode: e.target.value }); }} disabled={generating}>
                 <option value="low">Low</option>
                 <option value="balanced">Balanced</option>
                 <option value="high">High</option>
@@ -211,7 +248,7 @@ export default function CohortBuilderPage() {
             </div>
             <div>
               <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Seed</label>
-              <input className="input-field" type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} disabled={generating} />
+              <input className="input-field" type="number" value={seed} onChange={(e) => { const v = Number(e.target.value); setSeed(v); persistCohort({ seed: v }); }} disabled={generating} />
             </div>
           </div>
 

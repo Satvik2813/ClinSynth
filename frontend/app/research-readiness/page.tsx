@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { ResearchReadiness, ReadinessMetric, api } from "@/lib/api";
 import { useApi } from "@/lib/swr";
 import { friendlyError } from "@/lib/errors";
@@ -8,6 +8,15 @@ import { SkeletonCard } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
+import { getSection, setSection } from "@/lib/pipeline-session";
+
+function getInitialReadinessForm() {
+  const saved = getSection("researchReadiness");
+  return {
+    utilityTarget: saved?.utilityTarget ?? "diabetes",
+    utilityModel: saved?.utilityModel ?? "logistic_regression",
+  };
+}
 
 function ReadinessBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
@@ -53,8 +62,16 @@ function MetricPanel({
 export default function ResearchReadinessPage() {
   const { data, error, isLoading, mutate } = useApi<ResearchReadiness>("/research/readiness", { errorRetryCount: 0 });
   const { mutate: globalMutate } = useSWRConfig();
-  const [utilityTarget, setUtilityTarget] = useState("diabetes");
-  const [utilityModel, setUtilityModel] = useState("logistic_regression");
+  
+  const initial = getInitialReadinessForm();
+  const [utilityTarget, setUtilityTarget] = useState(initial.utilityTarget);
+  const [utilityModel, setUtilityModel] = useState(initial.utilityModel);
+
+  const persistForm = useCallback((patch: Partial<{ utilityTarget: string; utilityModel: string }>) => {
+    const current = getSection("researchReadiness") ?? {};
+    setSection("researchReadiness", { ...current, ...patch });
+  }, []);
+
   const [runningUtility, setRunningUtility] = useState(false);
 
   const handleRunUtility = async () => {
@@ -180,7 +197,7 @@ export default function ResearchReadinessPage() {
           <div style={{ display: "flex", alignItems: "flex-end", gap: "0.75rem", flexWrap: "wrap" }}>
             <div>
               <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Target Variable</label>
-              <select className="select-field" value={utilityTarget} onChange={(e) => setUtilityTarget(e.target.value)} disabled={runningUtility} style={{ minWidth: 140 }}>
+              <select className="select-field" value={utilityTarget} onChange={(e) => { setUtilityTarget(e.target.value); persistForm({ utilityTarget: e.target.value }); }} disabled={runningUtility} style={{ minWidth: 140 }}>
                 <option value="diabetes">Diabetes</option>
                 <option value="hypertension">Hypertension</option>
                 <option value="gender">Gender</option>
@@ -188,7 +205,7 @@ export default function ResearchReadinessPage() {
             </div>
             <div>
               <label className="metric-label" style={{ display: "block", marginBottom: "0.25rem" }}>Model Type</label>
-              <select className="select-field" value={utilityModel} onChange={(e) => setUtilityModel(e.target.value)} disabled={runningUtility} style={{ minWidth: 160 }}>
+              <select className="select-field" value={utilityModel} onChange={(e) => { setUtilityModel(e.target.value); persistForm({ utilityModel: e.target.value }); }} disabled={runningUtility} style={{ minWidth: 160 }}>
                 <option value="logistic_regression">Logistic Regression</option>
                 <option value="random_forest">Random Forest</option>
                 <option value="gradient_boosting">Gradient Boosting</option>

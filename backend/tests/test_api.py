@@ -259,6 +259,25 @@ class TestOverview:
         assert data["source_patients"] > 0
 
 
+class TestCORS:
+    def test_preflight_production_origin(self):
+        r = client.options(
+            "/api/data/summary",
+            headers={
+                "Origin": "https://clin-synth.vercel.app",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        assert r.status_code == 200
+        assert r.headers["access-control-allow-origin"] == "https://clin-synth.vercel.app"
+
+    def test_cors_header_on_get(self):
+        r = client.get("/api/health", headers={"Origin": "https://clin-synth.vercel.app"})
+        assert r.status_code == 200
+        assert r.headers["access-control-allow-origin"] == "https://clin-synth.vercel.app"
+
+
 class TestConfig:
     def test_presets(self):
         r = client.get("/api/config/presets")
